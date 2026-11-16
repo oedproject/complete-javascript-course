@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Video Stüdyo</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="logo">▶</span> AI Video Stüdyo</div>
+    <div class="project-bar">
+      <select id="projectSelect" title="Proje seç"></select>
+      <button id="newProject" class="btn ghost">+ Yeni proje</button>
+      <button id="deleteProject" class="btn ghost danger" title="Projeyi sil">Sil</button>
+    </div>
+    <div id="statusChip" class="chip">…</div>
+  </header>
+
+  <div id="mockBanner" class="banner hidden">
+    Test modu: AI paketleri kurulu değil, kareler sahte (renkli) üretiliyor. Gerçek AI için
+    <code>./install.sh</code> çalıştır.
+  </div>
+
+  <main class="layout">
+    <!-- SOL: proje ayarları ve video -->
+    <aside class="side">
+      <section class="card">
+        <label class="field">
+          <span>Proje adı</span>
+          <input id="title" type="text" />
+        </label>
+        <label class="field">
+          <span>Fikir / hikâye</span>
+          <textarea id="idea" rows="6"
+            placeholder="Videonun hikâyesini yaz. Her satır ya da her cümle bir sahne olur.&#10;&#10;Örnek:&#10;Gece yağmurlu bir şehirde neon ışıklar altında yürüyen küçük bir robot.&#10;Robot bir su birikintisinde yansımasını görüyor.&#10;Gökyüzünde parlayan dev bir ay, robot yukarı bakıyor."></textarea>
+        </label>
+        <button id="splitIdea" class="btn">Sahnelere böl ↓</button>
+      </section>
+
+      <section class="card">
+        <h3>Görsel ayarları</h3>
+        <label class="field">
+          <span>Stil (tüm sahnelere eklenir)</span>
+          <input id="style" type="text" placeholder="cinematic, anime, watercolor…" />
+        </label>
+        <div class="presets" id="stylePresets"></div>
+        <label class="field">
+          <span>İstenmeyenler</span>
+          <input id="negative" type="text" />
+        </label>
+        <div class="field">
+          <span>Format</span>
+          <div class="seg" id="aspect">
+            <button data-v="16:9">16:9 Yatay</button>
+            <button data-v="9:16">9:16 Dikey</button>
+            <button data-v="1:1">1:1 Kare</button>
+          </div>
+        </div>
+        <label class="field">
+          <span>Görsel modeli</span>
+          <select id="imageModel"></select>
+        </label>
+        <label class="check">
+          <input id="translate" type="checkbox" />
+          <span>Türkçe istemleri İngilizceye çevir (daha iyi sonuç)</span>
+        </label>
+      </section>
+
+      <section class="card">
+        <h3>Video</h3>
+        <div class="field">
+          <span>Hareket modu</span>
+          <div class="seg" id="mode">
+            <button data-v="fast">⚡ Hızlı</button>
+            <button data-v="ai">✨ AI hareket</button>
+          </div>
+          <small id="modeHelp" class="help"></small>
+        </div>
+        <div class="row fast-only">
+          <label class="field"><span>Sahne süresi (sn)</span>
+            <input id="seconds" type="number" min="1" max="20" step="0.5" /></label>
+        </div>
+        <div class="row ai-only">
+          <label class="field"><span>Klip süresi (sn)</span>
+            <input id="aiSeconds" type="number" min="1" max="6" step="0.5" /></label>
+          <label class="field"><span>Adım</span>
+            <input id="aiSteps" type="number" min="8" max="60" step="1" /></label>
+        </div>
+        <label class="field ai-only"><span>AI klip kalitesi</span>
+          <select id="aiQuality">
+            <option value="low">Düşük (512 px, daha hızlı)</option>
+            <option value="medium">Orta (704 px, daha yavaş)</option>
+          </select>
+        </label>
+        <div class="row">
+          <label class="field"><span>Geçiş (sn)</span>
+            <input id="fade" type="number" min="0" max="3" step="0.1" /></label>
+          <label class="field"><span>Çözünürlük</span>
+            <select id="resolution"></select></label>
+        </div>
+        <label class="check">
+          <input id="captions" type="checkbox" />
+          <span>Altyazıları videoya yaz</span>
+        </label>
+        <div class="field">
+          <span>Müzik (isteğe bağlı)</span>
+          <div class="music">
+            <span id="musicName" class="muted">Müzik yok</span>
+            <label class="btn ghost small">Seç<input id="musicFile" type="file" accept="audio/*" hidden /></label>
+            <button id="musicRemove" class="btn ghost small hidden">Kaldır</button>
+          </div>
+        </div>
+        <button id="render" class="btn primary big">🎬 Videoyu oluştur</button>
+      </section>
+
+      <section class="card hidden" id="outputCard">
+        <h3>Sonuç</h3>
+        <video id="outputVideo" controls playsinline></video>
+        <div class="row between">
+          <span id="outputInfo" class="muted"></span>
+          <a id="outputDownload" class="btn small" download>⬇ İndir</a>
+        </div>
+      </section>
+    </aside>
+
+    <!-- SAĞ: sahneler -->
+    <section class="scenes-wrap">
+      <div class="scenes-toolbar">
+        <h2>Sahneler <span id="sceneCount" class="muted"></span></h2>
+        <div class="toolbar-actions">
+          <button id="addScene" class="btn ghost">+ Sahne ekle</button>
+          <button id="genMissing" class="btn">Eksik kareleri üret</button>
+          <button id="genAll" class="btn ghost">Hepsini yeniden üret</button>
+        </div>
+      </div>
+      <div id="scenes" class="scenes"></div>
+    </section>
+  </main>
+
+  <div id="jobbar" class="jobbar hidden">
+    <div class="job-text"><strong id="jobLabel"></strong> <span id="jobMsg"></span></div>
+    <div class="progress"><div id="jobProgress"></div></div>
+    <span id="jobQueue" class="muted"></span>
+    <button id="jobCancel" class="btn ghost small">İptal</button>
+  </div>
+  <div id="toast" class="toast hidden"></div>
+
+  <template id="sceneTpl">
+    <article class="scene">
+      <div class="thumb">
+        <img alt="" />
+        <div class="placeholder">Henüz kare yok</div>
+        <div class="busy"><div class="spinner"></div><span class="busy-msg">Sırada</span></div>
+        <span class="badge clip-badge hidden">AI klip hazır</span>
+      </div>
+      <div class="scene-body">
+        <div class="scene-head">
+          <strong class="scene-no"></strong>
+          <div class="icons">
+            <button class="icon up" title="Yukarı">↑</button>
+            <button class="icon down" title="Aşağı">↓</button>
+            <button class="icon dup" title="Çoğalt">⧉</button>
+            <button class="icon del" title="Sil">✕</button>
+          </div>
+        </div>
+        <textarea class="prompt" rows="3" placeholder="Bu sahnede ne görünsün? (Türkçe yazabilirsin)"></textarea>
+        <input class="caption" type="text" placeholder="Altyazı (isteğe bağlı)" />
+        <details>
+          <summary>Gelişmiş</summary>
+          <label class="field"><span>Kamera hareketi (hızlı mod)</span>
+            <select class="effect"></select></label>
+          <label class="field"><span>Hareket tarifi (AI mod, boşsa istem kullanılır)</span>
+            <input class="motion" type="text" placeholder="robot yavaşça başını çeviriyor, yağmur yağıyor" /></label>
+          <label class="field"><span>Seed</span>
+            <input class="seed" type="number" placeholder="rastgele" /></label>
+          <small class="used-prompt muted"></small>
+        </details>
+        <div class="scene-actions">
+          <button class="btn gen">Kare üret</button>
+          <button class="btn ghost same" title="Aynı seed ile yeniden çiz (istemi değiştirdiysen)">Aynı seed</button>
+          <label class="btn ghost">Yükle<input class="upload" type="file" accept="image/*" hidden /></label>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
