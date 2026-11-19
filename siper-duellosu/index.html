@@ -3,88 +3,131 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<meta name="theme-color" content="#241634">
+<meta name="theme-color" content="#2a1b2e">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Siper Düellosu</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Rubik:wght@400;500;700&display=swap">
 <style>
-/* Layout: one full-screen canvas duel; DOM menus float over it like a saloon sign. Single dusk-canyon look, deliberately dark. */
+/* Full-screen 3D arena; DOM HUD and menus float on top. Warm desert-dusk look, single theme. */
 :root{
-  --sky:#241634; --dusk:#c2553a; --sand:#3b2622; --ink:#fff4e6; --muted:#d9bfae;
-  --me:#38d3c0; --foe:#ff7d5c; --gold:#ffc65c; --panel:rgba(28,16,30,.88); --line:rgba(255,230,210,.18);
+  --ink:#fff6ea; --muted:#e2c9b6; --panel:rgba(32,18,30,.9); --line:rgba(255,230,210,.2);
+  --hide:#3fd0bd; --shoot:#ff8457; --gold:#ffc65c; --danger:#ff5d5d;
   --display:"Bungee","Impact",system-ui,sans-serif; --body:"Rubik",system-ui,-apple-system,"Segoe UI",sans-serif;
   color-scheme:dark;
 }
-[hidden]{display:none!important}
 *{box-sizing:border-box}
-html,body{height:100%;margin:0;overflow:hidden;background:var(--sky);color:var(--ink);font-family:var(--body);}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0;overflow:hidden;background:#2a1b2e;color:var(--ink);font-family:var(--body)}
 body{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
-#game{position:fixed;inset:0;width:100%;height:100%;display:block}
-.overlay{position:fixed;inset:0;display:flex;align-items:flex-start;justify-content:center;
+#c{position:fixed;inset:0;width:100%;height:100%;display:block}
+
+/* HUD */
+#hud{position:fixed;inset:0;pointer-events:none}
+#top{position:absolute;top:calc(8px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px}
+#score{display:flex;align-items:center;gap:10px;background:rgba(20,10,20,.55);border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-weight:700;font-size:15px;white-space:nowrap}
+#score .n{font-variant-numeric:tabular-nums;font-family:var(--display);font-size:18px}
+#score .p0{color:var(--hide)} #score .p1{color:var(--shoot)}
+#phaseRow{display:flex;align-items:center;gap:8px}
+#phase{font-family:var(--display);font-size:clamp(18px,4.5vw,28px);text-shadow:0 2px 0 rgba(0,0,0,.45)}
+#timer{font-family:var(--display);font-size:clamp(18px,4.5vw,28px);color:var(--gold);font-variant-numeric:tabular-nums;text-shadow:0 2px 0 rgba(0,0,0,.45)}
+#role{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);text-shadow:0 1px 0 rgba(0,0,0,.6)}
+#ammo{position:absolute;right:calc(14px + env(safe-area-inset-right,0px));bottom:calc(14px + env(safe-area-inset-bottom,0px));display:flex;gap:5px;align-items:flex-end}
+#ammo i{display:block;width:10px;height:26px;border-radius:5px 5px 3px 3px;background:var(--gold);box-shadow:0 1px 0 rgba(0,0,0,.4)}
+#ammo i.off{background:rgba(255,255,255,.18)}
+#hint{position:absolute;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);font-size:14px;background:rgba(20,10,20,.55);border-radius:10px;padding:7px 12px;white-space:nowrap;max-width:calc(100vw - 32px);overflow:hidden;text-overflow:ellipsis}
+#seen{position:absolute;left:50%;top:calc(120px + env(safe-area-inset-top,0px));transform:translateX(-50%);font-family:var(--display);font-size:15px;padding:6px 12px;border-radius:10px;background:var(--danger);color:#fff;box-shadow:0 4px 18px rgba(255,60,60,.4)}
+#seen.safe{background:rgba(63,208,189,.9);color:#10201e;box-shadow:none}
+#banner{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);text-align:center;width:min(92vw,600px)}
+#banner h2{margin:0;font-family:var(--display);font-weight:400;font-size:clamp(30px,8vw,54px);text-shadow:0 3px 0 rgba(0,0,0,.5);text-wrap:balance}
+#banner p{margin:6px 0 0;font-size:16px;color:#ffe2c8;text-shadow:0 1px 2px rgba(0,0,0,.7)}
+.hudbtn{pointer-events:auto}
+#menuBtn{position:absolute;top:calc(8px + env(safe-area-inset-top,0px));left:calc(8px + env(safe-area-inset-left,0px));padding:8px 12px;font-size:13px;background:rgba(0,0,0,.4);color:var(--ink);border:1px solid var(--line)}
+#readyBtn{position:absolute;left:50%;bottom:calc(58px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--hide);color:#0f2421}
+#joy{position:absolute;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;border:2px solid rgba(255,255,255,.35);background:rgba(255,255,255,.08)}
+#knob{position:absolute;left:35px;top:35px;width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.55)}
+#reticle{position:absolute;width:34px;height:34px;margin:-17px 0 0 -17px;border:3px solid var(--gold);border-radius:50%;opacity:0;transition:opacity .4s}
+#reticle.on{opacity:1;transition:none}
+
+/* Menus */
+.overlay{position:fixed;inset:0;display:flex;align-items:flex-start;justify-content:center;overflow:auto;
   padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
-  background:radial-gradient(ellipse at center,rgba(20,10,24,.35),rgba(20,10,24,.8));overflow:auto}
-.card{margin:auto;width:min(440px,100%);background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:22px;display:flex;flex-direction:column;gap:14px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
-h1{font-family:var(--display);font-weight:400;font-size:clamp(30px,8vw,44px);line-height:1;margin:0;text-wrap:balance;letter-spacing:.5px}
+  background:radial-gradient(ellipse at center,rgba(30,14,28,.45),rgba(30,14,28,.85))}
+.card{margin:auto;width:min(460px,100%);background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:22px;display:flex;flex-direction:column;gap:14px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+h1{font-family:var(--display);font-weight:400;font-size:clamp(30px,8vw,44px);line-height:1;margin:0;text-wrap:balance}
 h1 span{color:var(--gold)}
-.tag{margin:0;color:var(--muted);font-size:14px;line-height:1.45}
+.tag{margin:0;color:var(--muted);font-size:14.5px;line-height:1.45}
 label{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
-.field{display:flex;flex-direction:column;gap:6px}
-input{font:500 17px var(--body);padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:rgba(0,0,0,.35);color:var(--ink);outline:none;min-width:0}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+input{font:500 17px var(--body);padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:rgba(0,0,0,.35);color:var(--ink);outline:none;min-width:0;width:100%}
 input:focus-visible{border-color:var(--gold)}
 #codeIn{text-transform:uppercase;letter-spacing:.3em;font-family:var(--display);text-align:center}
 .row{display:flex;gap:10px;flex-wrap:wrap}
 .row>*{flex:1 1 140px}
-button{font:700 16px var(--body);padding:13px 16px;border-radius:12px;border:0;cursor:pointer;color:#1d1020;background:var(--gold);transition:transform .08s,filter .15s}
+button{font:700 16px var(--body);padding:13px 16px;border-radius:12px;border:0;cursor:pointer;color:#1d1020;background:var(--gold);transition:transform .08s}
 button:active{transform:scale(.97)}
+#readyBtn:active{transform:translateX(-50%) scale(.97)}
 button:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
 button.alt{background:transparent;color:var(--ink);border:1px solid var(--line)}
-button.me{background:var(--me)}
+button.teal{background:var(--hide)}
 button:disabled{opacity:.45;cursor:not-allowed}
-.how{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:13.5px;color:var(--muted);line-height:1.4}
+.sep{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+.sep::before,.sep::after{content:"";flex:1;height:1px;background:var(--line)}
+.how{display:grid;grid-template-columns:auto 1fr;gap:7px 10px;font-size:13.5px;color:var(--muted);line-height:1.4}
 .how b{color:var(--ink);font-weight:500}
-.k{font-family:var(--display);color:var(--gold);font-size:12px}
+.k{font-family:var(--display);color:var(--gold);font-size:12px;padding-top:2px}
 .note{font-size:12.5px;color:var(--muted);margin:0;line-height:1.45}
-.code{font-family:var(--display);font-size:46px;letter-spacing:.18em;text-align:center;color:var(--gold);margin:4px 0}
 .err{color:#ffb1a0}
-#hudBtns{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:calc(10px + env(safe-area-inset-left,0px));display:flex;gap:8px;z-index:5}
-#hudBtns button{padding:8px 12px;font-size:13px;background:rgba(0,0,0,.4);color:var(--ink);border:1px solid var(--line)}
-#endBox{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:flex;gap:10px;z-index:5}
-@media (prefers-reduced-motion:reduce){button{transition:none}}
+.code{font-family:var(--display);font-size:46px;letter-spacing:.18em;text-align:center;color:var(--gold);margin:4px 0}
+@media (prefers-reduced-motion:reduce){button,#reticle{transition:none}}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body>
-<canvas id="game"></canvas>
+<canvas id="c"></canvas>
 
-<div id="hudBtns" hidden>
-  <button id="exitBtn" type="button">← Menü</button>
-  <button id="muteBtn" type="button">Ses: açık</button>
+<div id="hud" hidden>
+  <button id="menuBtn" class="hudbtn" type="button">← Menü</button>
+  <div id="top">
+    <div id="score"><span class="p0" id="n0">Oyuncu 1</span><span class="n" id="s0">0</span><span>:</span><span class="n" id="s1">0</span><span class="p1" id="n1">Oyuncu 2</span></div>
+    <div id="phaseRow"><span id="phase"></span><span id="timer"></span></div>
+    <div id="role"></div>
+  </div>
+  <div id="seen" hidden></div>
+  <div id="banner" hidden><h2 id="bTitle"></h2><p id="bText"></p></div>
+  <div id="joy" hidden><div id="knob"></div></div>
+  <div id="reticle"></div>
+  <div id="ammo"></div>
+  <div id="hint" hidden></div>
+  <button id="readyBtn" class="hudbtn" type="button" hidden>Saklandım, başlasın!</button>
 </div>
-<div id="endBox" hidden><button id="rematchBtn" type="button">Rövanş</button></div>
 
 <div class="overlay" id="menu">
   <div class="card">
     <h1>Siper <span>Düellosu</span></h1>
-    <p class="tag">İki kovboy, iki sandık, beş mermi. Siperden çık, nişan al, bırak ve saklan. Üç raundu ilk alan kazanır.</p>
+    <p class="tag">Biri saklanır, öbürü ateş eder. Mermiler duvarları paramparça eder; siperin kalmazsa yakalanırsın. Sırayla rol değiştirin, 3 puanı ilk alan kazanır.</p>
     <div class="field">
       <label for="nameIn">Adın</label>
       <input id="nameIn" maxlength="14" placeholder="Örn. Ensar" autocomplete="off">
     </div>
+    <div class="sep">İki telefonla</div>
     <div class="row">
       <button id="hostBtn" type="button">Oda kur</button>
-      <button id="botBtn" type="button" class="alt">Bota karşı</button>
     </div>
     <div class="row">
       <input id="codeIn" maxlength="4" placeholder="KOD" autocomplete="off" aria-label="Oda kodu">
-      <button id="joinBtn" type="button" class="me">Odaya katıl</button>
+      <button id="joinBtn" type="button" class="teal">Odaya katıl</button>
     </div>
-    <p class="note" id="onlineNote"></p>
+    <p class="note" id="onlineNote">Bağlantı hazırlanıyor…</p>
+    <div class="sep">Tek telefonda sırayla</div>
+    <div class="row">
+      <div class="field"><label for="name2In">Eşinin adı</label><input id="name2In" maxlength="14" placeholder="Örn. Elif" autocomplete="off"></div>
+    </div>
+    <button id="localBtn" type="button" class="alt">Aynı telefonda oyna</button>
     <div class="how">
-      <span class="k">BAS</span><span><b>Basılı tut:</b> siperden kalkıp nişan alırsın. Nişangah yukarı aşağı kayar.</span>
-      <span class="k">BIRAK</span><span><b>Parmağını çek:</b> ateş eder ve siperine geri çömelirsin.</span>
-      <span class="k">KAFA</span><span>Kafaya isabet 2 can, gövdeye 1. Mermi vardığında rakip çömelmişse sandığa saplanır.</span>
-      <span class="k">PC</span><span>Bilgisayarda boşluk tuşu ya da fare.</span>
+      <span class="k">SAKLAN</span><span><b>Ekranda parmağını sürükle:</b> karakterin yürür. 15 saniyede bir duvarın arkasına geç.</span>
+      <span class="k">ATEŞ</span><span><b>Dokunduğun yere mermi gider.</b> Sürükleyerek etrafa bakarsın. 10 mermin ve 30 saniyen var.</span>
+      <span class="k">YIKIM</span><span>Her atış duvardan parça koparır, üstteki tuğlalar aşağı düşer. Saklanan kişi atış sırasında da kaçabilir.</span>
     </div>
   </div>
 </div>
@@ -98,633 +141,801 @@ button:disabled{opacity:.45;cursor:not-allowed}
       <button id="copyBtn" type="button" class="alt">Kodu kopyala</button>
       <button id="cancelBtn" type="button" class="alt">Vazgeç</button>
     </div>
-    <p class="note" id="lobbyStatus">Rakip bekleniyor…</p>
+    <p class="note" id="lobbyStatus">Oda açılıyor…</p>
   </div>
 </div>
 
-<script>
-(() => {
-"use strict";
-const TRAVEL = 0.30, MAXHP = 3, MAXAMMO = 5, RELOAD = 1.5, RAISE = 0.12, MINAIM = 0.2, WIN = 3;
+<div class="overlay" id="handoff" hidden>
+  <div class="card">
+    <h1 id="hTitle"></h1>
+    <p class="tag" id="hText"></p>
+    <button id="hBtn" type="button"></button>
+  </div>
+</div>
+
+<div class="overlay" id="over" hidden>
+  <div class="card">
+    <h1 id="oTitle"></h1>
+    <p class="tag" id="oText"></p>
+    <div class="row">
+      <button id="rematchBtn" type="button">Rövanş</button>
+      <button id="overMenuBtn" type="button" class="alt">Menü</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+
+const HIDE_T = 15, SHOOT_T = 30, AMMO = 10, WIN = 3;
+const SPEED = 3.3, PROJ_SPEED = 30, BLAST_R = 1.3, HIT_R = 0.95, PY = 3;
+const AX0 = -8, AX1 = 8, AZ0 = 0, AZ1 = 14;   // arena bounds (world units = blocks)
+const HZ_MIN = 2.2;                            // hider cannot walk closer than this to the shooter
+const SHOOTER_POS = new THREE.Vector3(0, PY, -5.2);
+
 const $ = id => document.getElementById(id);
-const cv = $("game"), cx = cv.getContext("2d");
-let W = 0, H = 0, DPR = 1, S = 1, GY = 0, MEX = 0, OPX = 0, scenery = null;
-
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const lerp = (a, b, t) => a + (b - a) * t;
-const ease = t => 1 - Math.pow(1 - t, 3);
 const now = () => performance.now() / 1000;
-const rid = () => Math.random().toString(36).slice(2, 8);
-
+const rid = () => Math.random().toString(36).slice(2, 9);
 function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
 
-/* ---------- fighters ---------- */
-function fighter(name) {
-  return { name, hp: MAXHP, d: 0, m: 0, up: false, upSince: -9, downSince: -9, ammo: MAXAMMO, reloadUntil: 0,
-    phase: 0, shots: [], hits: [], flashUntil: 0, present: false, holdFor: 0, nextAt: 0 };
+/* ================= three.js scene ================= */
+const canvas = $("c");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+{
+  const cv = document.createElement("canvas"); cv.width = 4; cv.height = 256;
+  const g = cv.getContext("2d"), gr = g.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, "#3b2a5a"); gr.addColorStop(0.45, "#c46a5a"); gr.addColorStop(0.75, "#f4b27a"); gr.addColorStop(1, "#f6c896");
+  g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  scene.background = tex;
 }
-let me = fighter("Sen"), opp = fighter("Rakip");
-let mode = "menu"; // menu | bot | online
-let phase = "idle", phaseEnd = 0, banner = "", subBanner = "";
-let lastMeD = 0, lastOppD = 0;
-const pending = [], bullets = [], parts = [], floats = [];
-let shake = 0, hurtUntil = 0;
+scene.fog = new THREE.Fog("#e9a679", 32, 75);
+const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 200);
+camera.rotation.order = "YXZ";
 
-function zone(a) {
-  if (a >= 0.58 && a <= 1.02) return "head";
-  if (a >= -0.45 && a < 0.58) return "body";
-  return a < -0.45 ? "low" : "high";
+scene.add(new THREE.HemisphereLight("#ffe9cf", "#7a4f3c", 1.0));
+const sun = new THREE.DirectionalLight("#fff0d2", 1.9);
+sun.position.set(9, 16, 2); sun.target.position.set(0, 0, 7);
+sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
+Object.assign(sun.shadow.camera, { left: -13, right: 13, top: 14, bottom: -14, near: 1, far: 50 });
+sun.shadow.bias = -0.0008;
+scene.add(sun, sun.target);
+
+const std = (color, rough = 0.9) => new THREE.MeshStandardMaterial({ color, roughness: rough });
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(160, 160), std("#d39a62", 1));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(AX1 - AX0, AZ1 - AZ0), std("#c4834f", 1));
+floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0.01, (AZ0 + AZ1) / 2); floor.receiveShadow = true; scene.add(floor);
+// arena border
+for (const [w, d, x, z] of [[AX1 - AX0 + 0.3, 0.15, 0, AZ1], [AX1 - AX0 + 0.3, 0.15, 0, AZ0], [0.15, AZ1 - AZ0, AX0, 7], [0.15, AZ1 - AZ0, AX1, 7]]) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.12, d), std("#6e4430")); m.position.set(x, 0.06, z); scene.add(m);
 }
-function aimAt(f, t) {
-  const dt = Math.max(0, t - f.upSince);
-  return Math.sin(f.phase + dt * (3.1 + dt * 1.5)) * 1.22;
-}
-function raise(f) {
-  if (f.up || f.hp <= 0) return;
-  f.up = true; f.upSince = now(); f.phase = Math.random() * Math.PI * 2;
-  if (f === me) pub();
-}
-function release(f) {
-  if (!f.up) return;
-  const t = now();
-  const canFire = phase === "play" && f.hp > 0 && f.ammo > 0 && t >= f.reloadUntil && t - f.upSince >= MINAIM;
-  const a = aimAt(f, t);
-  f.up = false; f.downSince = t;
-  if (canFire) {
-    f.ammo--;
-    if (f.ammo === 0) f.reloadUntil = t + RELOAD;
-    const id = rid();
-    const shooterIsMe = f === me;
-    bullets.push({ fromMe: shooterIsMe, t0: t, a, id, done: false });
-    sfx("shot");
-    if (shooterIsMe) {
-      me.shots.push([id, Math.round(a * 1000) / 1000]);
-      if (me.shots.length > 6) me.shots.shift();
-      if (mode === "bot") pending.push({ at: t + TRAVEL, target: opp, a, id, fromMe: true });
+// shooter tower
+const tower = new THREE.Mesh(new THREE.BoxGeometry(3.4, PY, 2.6), std("#7d6f68"));
+tower.position.set(0, PY / 2, SHOOTER_POS.z); tower.castShadow = tower.receiveShadow = true; scene.add(tower);
+const towerTop = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.2, 2.8), std("#5e524c")); towerTop.position.set(0, PY + 0.1, SHOOTER_POS.z); scene.add(towerTop);
+// scenery: mesas, cacti, rocks
+{
+  const r = mulberry32(99);
+  for (let i = 0; i < 16; i++) {
+    const a = r() * Math.PI * 2, d = 38 + r() * 25, h = 4 + r() * 9, w = 4 + r() * 8;
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(w * 0.75, w, h, 7), std(r() < 0.5 ? "#a9573f" : "#94503c"));
+    m.position.set(Math.cos(a) * d, h / 2, 7 + Math.sin(a) * d); scene.add(m);
+  }
+  for (let i = 0; i < 14; i++) {
+    const side = r() < 0.5 ? -1 : 1, x = side * (10 + r() * 12), z = -4 + r() * 24;
+    if (r() < 0.55) {
+      const g = new THREE.Group(), mat = std("#4f7a45");
+      const h = 1.2 + r() * 1.4;
+      const t = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, h, 3, 8), mat); t.position.y = h / 2 + 0.2; g.add(t);
+      const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.5, 3, 8), mat); arm.position.set(0.32, h * 0.6, 0); g.add(arm);
+      g.position.set(x, 0, z); g.traverse(o => o.castShadow = true); scene.add(g);
     } else {
-      pending.push({ at: t + TRAVEL, target: me, a, id, fromMe: false });
-    }
-  }
-  if (f === me) pub();
-}
-
-function resolveImpact(p) {
-  const tg = p.target, t = now();
-  if (phase !== "play" || tg.hp <= 0) return "miss";
-  const exposed = tg.up && t - tg.upSince > RAISE * 0.7;
-  let res;
-  if (!exposed) res = "cover";
-  else {
-    const z = zone(p.a);
-    res = z === "head" ? "head" : z === "body" ? "body" : z === "low" ? "cover" : "miss";
-  }
-  if (res === "head" || res === "body") {
-    tg.hp = Math.max(0, tg.hp - (res === "head" ? 2 : 1));
-    tg.flashUntil = t + 0.18;
-    if (tg.hp === 0) { tg.d++; tg.up = false; tg.downSince = t; }
-  }
-  return res;
-}
-function onImpactResult(p, res) {
-  if (p.fromMe) showResult(res, false);
-  else {
-    if (res === "head" || res === "body") {
-      shake = res === "head" ? 16 : 10; hurtUntil = now() + 0.35; sfx("hurt");
-      try { navigator.vibrate && navigator.vibrate(res === "head" ? 120 : 60); } catch (e) {}
-      floats.push({ x: MEX, y: GY - 190 * S, text: res === "head" ? "KAFA -2" : "-1", col: "#ff6b6b", t0: now() });
-    }
-    if (mode === "online") {
-      me.hits.push([p.id, res]);
-      if (me.hits.length > 8) me.hits.shift();
-      pub();
+      const m = new THREE.Mesh(new THREE.DodecahedronGeometry(0.5 + r() * 0.7, 0), std("#8d6a55"));
+      m.position.set(x, 0.3, z); m.castShadow = true; scene.add(m);
     }
   }
 }
-function showResult(res, _) {
-  const map = { head: ["KAFA! -2", "#ffc65c"], body: ["İSABET -1", "#ffffff"], cover: ["SİPER", "#c9a27c"], miss: ["ISKA", "#9aa"] };
-  const [text, col] = map[res] || map.miss;
-  if (res === "head" || res === "body") sfx("hit");
-  floats.push({ x: OPX, y: GY - 195 * S, text, col, t0: now() });
+
+/* ================= characters ================= */
+function makeChar(color, withTube) {
+  const g = new THREE.Group();
+  const mat = std(color, 0.6), skin = std("#f0c39a", 0.7), dark = std("#2a1c1c", 0.5);
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 0.45, 4, 12), mat); body.position.y = 0.55; g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 18, 14), skin); head.position.y = 1.08; g.add(head);
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.248, 0.248, 0.08, 18), mat); band.position.y = 1.16; g.add(band);
+  for (const s of [-1, 1]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), dark); e.position.set(s * 0.09, 1.1, 0.21); g.add(e); }
+  if (withTube) {
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 1.1, 12), std("#3b3f45", 0.4));
+    tube.rotation.x = Math.PI / 2; tube.position.set(0.28, 0.95, 0.25); g.add(tube);
+    const tip = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.12, 12), std("#ffb347", 0.4));
+    tip.rotation.x = Math.PI / 2; tip.position.set(0.28, 0.95, 0.82); g.add(tip);
+  }
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
+const hiderMesh = makeChar("#2bb8a6", false); scene.add(hiderMesh);
+const shooterMesh = makeChar("#ef6f45", true); shooterMesh.position.copy(SHOOTER_POS); scene.add(shooterMesh);
+// ring under hider so its owner always finds it
+const ring = new THREE.Mesh(new THREE.RingGeometry(0.38, 0.5, 24), new THREE.MeshBasicMaterial({ color: "#3fd0bd", transparent: true, opacity: 0.8 }));
+ring.rotation.x = -Math.PI / 2; ring.position.y = 0.03; hiderMesh.add(ring);
+
+/* ================= map / blocks ================= */
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const STYLES = {
+  brick: ["#b9563d", "#a94a32", "#c4674c", "#9d4331"],
+  stone: ["#a49e96", "#928c85", "#b3ada4", "#878079"],
+  wood: ["#ad7744", "#986636", "#bb8752"],
+};
+let blocks = [], occ = new Map(), blockMesh = null;
+const boxGeo = new THREE.BoxGeometry(0.98, 0.98, 0.98);
+const blockMat = new THREE.MeshStandardMaterial({ roughness: 0.85 });
+const tmpM = new THREE.Matrix4(), tmpC = new THREE.Color(), tmpV = new THREE.Vector3();
+
+function genMap(seed) {
+  const r = mulberry32(seed), taken = new Set(), list = [];
+  const add = (x, y, z, style) => {
+    const k = x + "," + y + "," + z;
+    if (taken.has(k) || x < AX0 || x >= AX1 || z < 2 || z >= AZ1) return;
+    if (z >= 11 && x >= -2 && x <= 1) return; // keep hider spawn free
+    taken.add(k);
+    const pal = STYLES[style];
+    list.push({ id: list.length, x, y, z, col: pal[Math.floor(r() * pal.length)], alive: true, vy: y, vel: 0 });
+  };
+  const nW = 9 + Math.floor(r() * 3);
+  for (let i = 0; i < nW; i++) {
+    const horiz = r() < 0.7, len = 2 + Math.floor(r() * 4), h = 2 + Math.floor(r() * 2);
+    const style = r() < 0.55 ? "brick" : "stone";
+    const x0 = AX0 + Math.floor(r() * (16 - (horiz ? len : 1)));
+    const z0 = 3 + Math.floor(r() * (10 - (horiz ? 0 : len)));
+    for (let a = 0; a < len; a++) for (let y = 0; y < h; y++) add(horiz ? x0 + a : x0, y, horiz ? z0 : z0 + a, style);
+  }
+  for (let i = 0; i < 7; i++) {
+    const x = AX0 + Math.floor(r() * 16), z = 3 + Math.floor(r() * 10), h = 1 + Math.floor(r() * 2);
+    for (let y = 0; y < h; y++) add(x, y, z, "wood");
+  }
+  return list;
+}
+function buildBlocks(seed) {
+  blocks = genMap(seed);
+  if (blockMesh) { scene.remove(blockMesh); blockMesh.dispose(); }
+  blockMesh = new THREE.InstancedMesh(boxGeo, blockMat, Math.max(1, blocks.length));
+  blockMesh.castShadow = blockMesh.receiveShadow = true;
+  blocks.forEach((b, i) => blockMesh.setColorAt(i, tmpC.set(b.col)));
+  scene.add(blockMesh);
+  settle(); syncBlockMatrices(true);
+}
+function settle() {
+  const cols = new Map();
+  for (const b of blocks) if (b.alive) { const k = b.x + "," + b.z; (cols.get(k) || cols.set(k, []).get(k)).push(b); }
+  for (const col of cols.values()) {
+    col.sort((a, b) => a.y - b.y || a.id - b.id);
+    col.forEach((b, i) => { b.y = i; });
+  }
+  occ = new Map();
+  for (const b of blocks) if (b.alive) occ.set(b.x + "," + b.y + "," + b.z, b);
+}
+function syncBlockMatrices(force) {
+  let dirty = force;
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    if (!b.alive) { if (b.vy !== -100) { b.vy = -100; dirty = true; tmpM.makeTranslation(0, -100, 0); blockMesh.setMatrixAt(i, tmpM); } continue; }
+    if (force || b.vy !== b.y) {
+      dirty = true;
+      tmpM.makeTranslation(b.x + 0.5, b.vy + 0.5, b.z + 0.5);
+      blockMesh.setMatrixAt(i, tmpM);
+    }
+  }
+  if (dirty) { blockMesh.instanceMatrix.needsUpdate = true; blockMesh.computeBoundingSphere(); }
+}
+function solidCell(cx, cy, cz) { return occ.has(cx + "," + cy + "," + cz); }
+function blockedAt(px, pz) {
+  const r = 0.3;
+  if (px - r < AX0 || px + r > AX1 || pz - r < HZ_MIN || pz + r > AZ1) return true;
+  for (let x = Math.floor(px - r); x <= Math.floor(px + r); x++)
+    for (let z = Math.floor(pz - r); z <= Math.floor(pz + r); z++)
+      if (solidCell(x, 0, z) || solidCell(x, 1, z)) return true;
+  return false;
 }
 
-/* ---------- networking: direct phone-to-phone via PeerJS (WebRTC) ---------- */
-const ID_PREFIX = "siperduello-v1-";
-let peerObj = null, conn = null, roomH = null, oppPeer = null, lastHeard = 0, hbTimer = null;
-const seenShots = new Set(), seenHits = new Set();
-const myShotIds = new Set();
-
-function myState() { return { g: 1, n: me.name, u: me.up, h: me.hp, d: me.d, m: me.m, am: me.ammo, s: me.shots, r: me.hits }; }
-function pub() {
-  if (conn && conn.open) { try { conn.send(myState()); } catch (e) {} }
+/* ================= effects ================= */
+const DEBRIS_N = 420;
+const debrisMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.24, 0.24, 0.24), new THREE.MeshStandardMaterial({ roughness: 0.9 }), DEBRIS_N);
+debrisMesh.castShadow = true;
+const debris = [];
+for (let i = 0; i < DEBRIS_N; i++) { debris.push({ life: 0, p: new THREE.Vector3(), v: new THREE.Vector3(), r: new THREE.Euler(), s: 1 }); tmpM.makeTranslation(0, -100, 0); debrisMesh.setMatrixAt(i, tmpM); debrisMesh.setColorAt(i, tmpC.set("#fff")); }
+scene.add(debrisMesh);
+let debrisNext = 0;
+function spawnDebris(x, y, z, col, n, power) {
+  for (let k = 0; k < n; k++) {
+    const i = debrisNext = (debrisNext + 1) % DEBRIS_N, d = debris[i];
+    d.life = 1.6 + Math.random() * 1.2;
+    d.p.set(x + (Math.random() - 0.5) * 0.8, y + (Math.random() - 0.5) * 0.8, z + (Math.random() - 0.5) * 0.8);
+    d.v.set((Math.random() - 0.5) * power, Math.random() * power * 0.9 + 2, (Math.random() - 0.5) * power + 1.5);
+    d.r.set(Math.random() * 6, Math.random() * 6, 0); d.s = 0.6 + Math.random() * 0.8;
+    debrisMesh.setColorAt(i, tmpC.set(col));
+  }
+  debrisMesh.instanceColor.needsUpdate = true;
 }
-function num(v, lo, hi, dflt) { return typeof v === "number" && isFinite(v) ? clamp(v, lo, hi) : dflt; }
+const tmpQ = new THREE.Quaternion(), tmpS = new THREE.Vector3();
+function updateDebris(dt) {
+  for (let i = 0; i < DEBRIS_N; i++) {
+    const d = debris[i];
+    if (d.life <= 0) continue;
+    d.life -= dt;
+    d.v.y -= 18 * dt; d.p.addScaledVector(d.v, dt);
+    if (d.p.y < 0.12) { d.p.y = 0.12; d.v.y *= -0.3; d.v.x *= 0.6; d.v.z *= 0.6; }
+    d.r.x += d.v.z * dt * 2; d.r.y += d.v.x * dt * 2;
+    const sc = d.life <= 0 ? 0.0001 : d.s * Math.min(1, d.life * 2);
+    tmpQ.setFromEuler(d.r); tmpS.set(sc, sc, sc);
+    tmpM.compose(d.life <= 0 ? tmpV.set(0, -100, 0) : d.p, tmpQ, tmpS);
+    debrisMesh.setMatrixAt(i, tmpM);
+  }
+  debrisMesh.instanceMatrix.needsUpdate = true;
+}
+const blasts = [];
+for (let i = 0; i < 6; i++) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ color: "#ffb347", transparent: true, opacity: 0, depthWrite: false }));
+  m.visible = false; scene.add(m); blasts.push({ m, t: 9 });
+}
+let blastNext = 0, shake = 0;
+function blast(p) {
+  const b = blasts[blastNext = (blastNext + 1) % blasts.length];
+  b.t = 0; b.m.position.copy(p); b.m.visible = true;
+}
+function updateBlasts(dt) {
+  for (const b of blasts) {
+    if (!b.m.visible) continue;
+    b.t += dt;
+    const k = b.t / 0.45;
+    if (k >= 1) { b.m.visible = false; continue; }
+    const s = 0.3 + k * BLAST_R * 1.3;
+    b.m.scale.set(s, s, s); b.m.material.opacity = 0.9 * (1 - k);
+    b.m.material.color.set(k < 0.3 ? "#fff1b0" : "#ff8a3d");
+  }
+}
+const projGeo = new THREE.SphereGeometry(0.16, 12, 10), projMat = new THREE.MeshBasicMaterial({ color: "#ffd27a" });
 
-function syncOpp(peers) {
-  const cand = peers.filter(p => !p.sameTab && p.presence && p.presence.g === 1);
-  const p = cand.find(c => c.peer === oppPeer) || cand[0];
-  if (!p) {
-    if (opp.present) { opp.present = false; oppPeer = null; }
-    return;
+/* ================= sound ================= */
+let ac = null;
+function sfx(kind) {
+  try {
+    if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === "suspended") ac.resume();
+    const t = ac.currentTime;
+    if (kind === "shot" || kind === "boom") {
+      const len = kind === "boom" ? 0.6 : 0.2;
+      const buf = ac.createBuffer(1, Math.floor(ac.sampleRate * len), ac.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, kind === "boom" ? 2 : 4);
+      const s = ac.createBufferSource(); s.buffer = buf;
+      const f = ac.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = kind === "boom" ? 700 : 2200;
+      const g = ac.createGain(); g.gain.value = kind === "boom" ? 0.8 : 0.35;
+      s.connect(f).connect(g).connect(ac.destination); s.start(t);
+    } else {
+      const o = ac.createOscillator(), g = ac.createGain(); o.type = "triangle";
+      const notes = kind === "win" ? [523, 659, 784] : kind === "lose" ? [392, 330, 262] : [660, 880];
+      notes.forEach((n, i) => o.frequency.setValueAtTime(n, t + i * 0.12));
+      g.gain.setValueAtTime(0.2, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+      o.connect(g).connect(ac.destination); o.start(t); o.stop(t + 0.5);
+    }
+  } catch (e) {}
+  if (kind === "boom") { try { navigator.vibrate && navigator.vibrate(40); } catch (e) {} }
+}
+
+/* ================= game state ================= */
+const BASE_PITCH = -Math.atan2(PY + 2.3, 11.5);
+const G = {
+  mode: "menu", names: ["Oyuncu 1", "Oyuncu 2"], score: [0, 0], round: 0, phase: "idle", phaseEnd: 0,
+  myIdx: 0, ammo: AMMO, hx: -0.5, hz: 12.6, hry: Math.PI, thx: -0.5, thz: 12.6,
+  yaw: 0, pitch: BASE_PITCH, oppYaw: 0, projs: [], hitSent: false, doneSent: false, lastBoomAt: 0, token: 0,
+};
+const hiderIdx = () => G.round % 2;
+const shooterIdx = () => 1 - hiderIdx();
+const isAuth = () => G.mode === "hotseat" || (G.mode === "online" && G.myIdx === 0);
+const amHider = () => G.mode === "hotseat" ? G.phase === "hide" : G.myIdx === hiderIdx();
+const amShooter = () => G.mode === "hotseat" ? G.phase === "shoot" : G.myIdx === shooterIdx();
+const canMoveHider = () => amHider() && (G.phase === "hide" || G.phase === "shoot");
+const camMode = () => G.mode === "hotseat" ? (G.phase === "shoot" || G.phase === "preshoot" || G.phase === "end" ? "shooter" : "hider") : (amHider() ? "hider" : "shooter");
+
+function setupRound(seed) {
+  buildBlocks(seed);
+  G.hx = G.thx = -0.5; G.hz = G.thz = 12.6; G.hry = Math.PI;
+  G.ammo = AMMO; G.yaw = 0; G.pitch = BASE_PITCH; G.oppYaw = 0;
+  for (const p of G.projs) scene.remove(p.mesh);
+  G.projs = []; G.hitSent = false; G.doneSent = false; G.lastBoomAt = 0;
+  hiderMesh.position.set(G.hx, 0, G.hz);
+  camInit = true;
+}
+
+/* ---- authority (host, or the single phone) ---- */
+function A_startRound(r) {
+  const msg = { t: "round", r, seed: (Math.random() * 1e9) | 0, score: G.score.slice(), names: G.names.slice() };
+  send(msg); onRound(msg);
+}
+function A_beginShoot() {
+  if (G.phase !== "hide") return;
+  send({ t: "shoot" }); onShoot();
+}
+function A_endRound(w, reason) {
+  if (G.phase !== "shoot" && G.phase !== "preshoot" && G.phase !== "hide") return;
+  G.score[w]++;
+  const msg = { t: "end", w, reason, score: G.score.slice() };
+  send(msg); onEnd(msg);
+  const tok = G.token;
+  setTimeout(() => {
+    if (tok !== G.token) return;
+    if (Math.max(G.score[0], G.score[1]) >= WIN) { send({ t: "over" }); onOver(); }
+    else A_startRound(G.round + 1);
+  }, 3400);
+}
+
+/* ---- handlers (both sides) ---- */
+function onRound(m) {
+  G.round = m.r | 0;
+  G.score = [m.score[0] | 0, m.score[1] | 0];
+  if (G.mode === "online" && !isAuth() && Array.isArray(m.names)) G.names = [String(m.names[0]).slice(0, 14), String(m.names[1]).slice(0, 14)];
+  setupRound(m.seed | 0);
+  hideBanner(); $("over").hidden = true;
+  if (G.mode === "hotseat") {
+    G.phase = "prehide";
+    showHandoff(`${G.names[hiderIdx()]} saklanıyor`, `${G.names[shooterIdx()]}, ekrana bakma! ${G.names[hiderIdx()]} hazır olunca başlasın. Saklanmak için ${HIDE_T} saniye var.`, "Saklanmaya başla", () => { G.phase = "hide"; G.phaseEnd = now() + HIDE_T; });
+  } else {
+    G.phase = "hide"; G.phaseEnd = now() + HIDE_T;
+    flashBanner(amHider() ? "Saklan!" : "Rakip saklanıyor", amHider() ? "Bir duvarın arkasına geç." : "Haritaya bak, nereye saklanabilir düşün.", 2200);
   }
-  const pr = p.presence;
-  const fresh = p.peer !== oppPeer;
-  if (fresh) {
-    oppPeer = p.peer; seenShots.clear(); seenHits.clear();
-    (Array.isArray(pr.s) ? pr.s : []).forEach(s => Array.isArray(s) && seenShots.add(String(s[0])));
-    (Array.isArray(pr.r) ? pr.r : []).forEach(s => Array.isArray(s) && seenHits.add(String(s[0])));
+}
+function onShoot() {
+  if (G.mode === "hotseat") {
+    G.phase = "preshoot";
+    showHandoff(`Sıra ${G.names[shooterIdx()]}'de`, `Telefonu ${G.names[shooterIdx()]}'e ver. ${AMMO} mermi, ${SHOOT_T} saniye. Ekrana dokunduğun yere ateş edersin.`, "Ateşe başla", () => { G.phase = "shoot"; G.phaseEnd = now() + SHOOT_T; });
+  } else {
+    G.phase = "shoot"; G.phaseEnd = now() + SHOOT_T; G.snapNext = true;
+    flashBanner(amShooter() ? "Ateş!" : "Kaç!", amShooter() ? "Dokunduğun yere mermi gider." : "Siperin yıkılırsa yer değiştir.", 1600);
+    if (amHider()) sendPos(true);
   }
-  opp.present = true;
-  opp.name = typeof pr.n === "string" && pr.n.trim() ? pr.n.slice(0, 14) : "Rakip";
-  const up = pr.u === true;
-  if (up && !opp.up) { opp.upSince = now(); }
-  if (!up && opp.up) { opp.downSince = now(); }
-  opp.up = up;
-  const nh = num(pr.h, 0, MAXHP, MAXHP);
-  if (nh < opp.hp) opp.flashUntil = now() + 0.18;
-  opp.hp = nh;
-  opp.d = Math.round(num(pr.d, 0, 99, 0));
-  opp.m = Math.round(num(pr.m, 0, 1e6, 0));
-  opp.ammo = Math.round(num(pr.am, 0, MAXAMMO, MAXAMMO));
-  if (Array.isArray(pr.s)) for (const s of pr.s.slice(-6)) {
-    if (!Array.isArray(s)) continue;
-    const id = String(s[0]).slice(0, 12), a = num(s[1], -2, 2, 0);
-    if (seenShots.has(id)) continue;
-    seenShots.add(id);
-    const t = now();
-    bullets.push({ fromMe: false, t0: t, a, id, done: false });
-    sfx("shot");
-    pending.push({ at: t + TRAVEL, target: me, a, id, fromMe: false });
+}
+function onEnd(m) {
+  G.phase = "end"; G.score = [m.score[0] | 0, m.score[1] | 0];
+  const w = m.w | 0, byHit = m.reason === "hit";
+  const title = byHit ? `${G.names[shooterIdx()]} vurdu!` : `${G.names[hiderIdx()]} kurtuldu!`;
+  const text = byHit ? "Saklanan yakalandı." : m.reason === "ammo" ? "Mermiler bitti." : "Süre doldu.";
+  flashBanner(title, `${text} ${G.names[w]} +1 puan`, 3200);
+  const iWon = G.mode === "hotseat" || G.myIdx === w;
+  sfx(iWon ? "win" : "lose");
+}
+function onOver() {
+  G.phase = "over";
+  const w = G.score[0] >= WIN ? 0 : 1;
+  $("oTitle").textContent = `${G.names[w]} kazandı!`;
+  $("oText").textContent = `Skor ${G.names[0]} ${G.score[0]} – ${G.score[1]} ${G.names[1]}`;
+  $("rematchBtn").disabled = false; $("rematchBtn").textContent = "Rövanş";
+  $("over").hidden = false;
+}
+function applyBoom(p, rm, checkHit) {
+  const pv = new THREE.Vector3(p[0], p[1], p[2]);
+  for (const id of rm) {
+    const b = blocks[id];
+    if (!b || !b.alive) continue;
+    b.alive = false;
+    spawnDebris(b.x + 0.5, b.vy + 0.5, b.z + 0.5, b.col, 5, 7);
   }
-  if (Array.isArray(pr.r)) for (const r of pr.r.slice(-8)) {
-    if (!Array.isArray(r)) continue;
-    const id = String(r[0]).slice(0, 12);
-    if (seenHits.has(id)) continue;
-    seenHits.add(id);
-    if (me.shots.some(s => s[0] === id)) showResult(String(r[1]), true);
+  settle(); syncBlockMatrices(false);
+  spawnDebris(pv.x, pv.y, pv.z, "#5a4636", 6, 9);
+  blast(pv); sfx("boom");
+  shake = Math.max(shake, 0.35 / Math.max(1, pv.distanceTo(camera.position) / 6));
+  G.lastBoomAt = now();
+  if (checkHit && G.phase === "shoot") {
+    const d = tmpV.set(G.hx, 0.65, G.hz).distanceTo(pv);
+    if (d < HIT_R) hiderHit();
+  }
+}
+function hiderHit() {
+  if (G.hitSent) return;
+  G.hitSent = true;
+  hiderFlash = now() + 0.5;
+  if (isAuth()) A_endRound(shooterIdx(), "hit"); else send({ t: "hit" });
+}
+let hiderFlash = 0;
+
+/* ---- shooting ---- */
+const raycaster = new THREE.Raycaster();
+function muzzle() {
+  return new THREE.Vector3(SHOOTER_POS.x + Math.sin(G.yaw) * 0.85 + Math.cos(G.yaw) * 0.28, PY + 0.95, SHOOTER_POS.z + Math.cos(G.yaw) * 0.85 - Math.sin(G.yaw) * 0.28);
+}
+function fire(cx, cy) {
+  if (!(G.phase === "shoot" && amShooter() && G.ammo > 0)) return;
+  G.ammo--;
+  const ndc = new THREE.Vector2(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const targets = [blockMesh, ground, floor];
+  if (hiderMesh.visible) targets.push(hiderMesh);
+  const hit = raycaster.intersectObjects(targets, true)[0];
+  const to = hit ? hit.point.clone() : raycaster.ray.at(60, new THREE.Vector3());
+  launch(rid(), muzzle(), to, true, !!hit);
+  const ret = $("reticle"); ret.style.left = cx + "px"; ret.style.top = cy + "px";
+  ret.classList.add("on"); setTimeout(() => ret.classList.remove("on"), 60);
+}
+function launch(id, from, to, mine, explodes) {
+  const mesh = new THREE.Mesh(projGeo, projMat); mesh.position.copy(from); scene.add(mesh);
+  const dur = Math.max(0.12, from.distanceTo(to) / PROJ_SPEED);
+  G.projs.push({ id, from, to, t0: now(), dur, mine, explodes, mesh, done: false });
+  sfx("shot");
+  if (mine) send({ t: "shot", id, f: from.toArray(), to: to.toArray(), e: explodes });
+}
+function updateProjs() {
+  const t = now();
+  for (let i = G.projs.length - 1; i >= 0; i--) {
+    const p = G.projs[i], k = Math.min(1, (t - p.t0) / p.dur);
+    p.mesh.position.lerpVectors(p.from, p.to, k);
+    p.mesh.position.y += Math.sin(k * Math.PI) * 0.25;
+    if (k >= 1 && !p.done) {
+      p.done = true;
+      scene.remove(p.mesh);
+      if (p.mine) {
+        let rm = [];
+        if (p.explodes) {
+          for (const b of blocks) if (b.alive && tmpV.set(b.x + 0.5, b.y + 0.5, b.z + 0.5).distanceTo(p.to) < BLAST_R) rm.push(b.id);
+          const msg = { t: "boom", id: p.id, p: p.to.toArray(), rm };
+          send(msg);
+          applyBoom(msg.p, rm, G.mode === "hotseat");
+        } else send({ t: "boom", id: p.id, p: null, rm: [] });
+      }
+    }
+    if (p.done && (p.mine || p.boomed)) G.projs.splice(i, 1);
+    else if (p.done && t - p.t0 > p.dur + 3) G.projs.splice(i, 1);
   }
 }
 
+/* ================= networking (PeerJS, phone to phone) ================= */
+const ID_PREFIX = "siperduello3d-v1-";
+let peerObj = null, conn = null, hbTimer = null, lastHeard = 0, roomCode = "", isHost = false;
+function send(m) { if (G.mode === "online" && conn && conn.open) { try { conn.send(m); } catch (e) {} } }
+function num(v, d = 0) { return typeof v === "number" && isFinite(v) ? v : d; }
+function vec(a) { return Array.isArray(a) && a.length === 3 ? new THREE.Vector3(num(a[0]), num(a[1]), num(a[2])) : null; }
+
+function onMsg(m) {
+  switch (m.t) {
+    case "hi":
+      G.names[1 - G.myIdx] = String(m.name || "Rakip").slice(0, 14) || "Rakip";
+      if (isHost && G.phase === "lobby") { $("lobby").hidden = true; G.score = [0, 0]; A_startRound(0); }
+      else if (!isHost) $("lobby").hidden = true;
+      break;
+    case "round": if (!isAuth()) onRound(m); break;
+    case "shoot": if (!isAuth()) onShoot(); break;
+    case "end": if (!isAuth()) onEnd(m); break;
+    case "over": if (!isAuth()) onOver(); break;
+    case "ready": if (isAuth()) A_beginShoot(); break;
+    case "hit": if (isAuth() && G.phase === "shoot") A_endRound(shooterIdx(), "hit"); break;
+    case "done": if (isAuth() && G.phase === "shoot") A_endRound(hiderIdx(), "ammo"); break;
+    case "rematch": if (isAuth() && G.phase === "over") { G.score = [0, 0]; A_startRound(0); } break;
+    case "pos": if (!amHider()) { if (G.snapNext) { G.hx = clamp(num(m.x), AX0, AX1); G.hz = clamp(num(m.z), AZ0, AZ1); G.snapNext = false; } G.thx = clamp(num(m.x), AX0, AX1); G.thz = clamp(num(m.z), AZ0, AZ1); G.hry = num(m.r); } break;
+    case "aim": if (!amShooter()) G.oppYaw = clamp(num(m.y), -1.5, 1.5); break;
+    case "shot": {
+      const f = vec(m.f), to = vec(m.to);
+      if (f && to && !amShooter()) launch(String(m.id), f, to, false, !!m.e);
+      break;
+    }
+    case "boom": {
+      const p = G.projs.find(q => q.id === String(m.id));
+      if (p) { p.boomed = true; if (!p.done) { p.done = true; scene.remove(p.mesh); } }
+      if (Array.isArray(m.p) && Array.isArray(m.rm)) applyBoom(m.p.map(v => num(v)), m.rm.filter(v => Number.isInteger(v)).slice(0, 80), amHider());
+      break;
+    }
+  }
+}
+let lastPosSent = 0, lastAimSent = 0, lastPos = "", lastAim = "";
+function sendPos(force) {
+  const s = G.hx.toFixed(2) + "," + G.hz.toFixed(2);
+  if (!force && s === lastPos) return;
+  lastPos = s; send({ t: "pos", x: +G.hx.toFixed(2), z: +G.hz.toFixed(2), r: +G.hry.toFixed(2) });
+}
 function attachConn(c) {
   conn = c;
-  c.on("open", () => { lastHeard = Date.now(); lobbyMsg("Bağlandı!"); pub(); });
-  c.on("data", data => {
-    lastHeard = Date.now();
-    if (data && typeof data === "object") syncOpp([{ peer: c.peer, sameTab: false, presence: data }]);
-  });
-  const gone = () => { if (conn === c) { conn = null; syncOpp([]); lobbyMsg(isHost ? "Rakip ayrıldı. Aynı kodla tekrar girebilir." : "Bağlantı koptu. Menüye dönüp tekrar katıl.", !isHost); } };
-  c.on("close", gone);
-  c.on("error", gone);
+  c.on("open", () => { lastHeard = Date.now(); send({ t: "hi", name: G.names[G.myIdx] }); $("lobbyStatus").textContent = "Bağlandı!"; });
+  c.on("data", d => { lastHeard = Date.now(); if (d && typeof d === "object") onMsg(d); });
+  const gone = () => { if (conn === c) { conn = null; connectionLost(); } };
+  c.on("close", gone); c.on("error", gone);
 }
-let isHost = false;
-function makePeer(id) {
-  const opts = { debug: 0 };
-  return id ? new Peer(id, opts) : new Peer(opts);
+function connectionLost() {
+  if (G.mode !== "online") return;
+  if (isHost && G.phase === "lobby") return;
+  toMenu().then(() => { $("onlineNote").textContent = "Rakiple bağlantı koptu. Yeni oda kurup tekrar deneyin."; $("onlineNote").classList.add("err"); });
 }
 function joinRoom(code, host) {
   return new Promise((resolve, reject) => {
-    if (!window.Peer) return reject(new Error("no-peer"));
+    if (!window.Peer) return reject(Object.assign(new Error("no-peer"), { type: "no-peer" }));
     isHost = host;
-    roomH = true;
-    const p = makePeer(host ? ID_PREFIX + code.toLowerCase() : null);
+    const p = host ? new Peer(ID_PREFIX + code.toLowerCase(), { debug: 0 }) : new Peer({ debug: 0 });
     peerObj = p;
     let settled = false;
+    const fail = e => { if (!settled) { settled = true; reject(e); } };
     p.on("open", () => {
       if (host) {
-        p.on("connection", c => {
-          if (conn && conn.open) { c.on("open", () => c.close()); return; }
-          attachConn(c);
-        });
+        p.on("connection", c => { if (conn && conn.open) { c.on("open", () => c.close()); return; } attachConn(c); });
         settled = true; resolve();
       } else {
         const c = p.connect(ID_PREFIX + code.toLowerCase(), { reliable: true });
         attachConn(c);
         c.on("open", () => { if (!settled) { settled = true; resolve(); } });
-        setTimeout(() => { if (!settled) { settled = true; reject(new Error("timeout")); } }, 15000);
+        setTimeout(() => fail(Object.assign(new Error("timeout"), { type: "timeout" })), 15000);
       }
     });
-    p.on("error", err => {
-      const type = err && err.type;
-      if (!settled) { settled = true; reject(Object.assign(new Error(type || "error"), { type })); return; }
-      if (type === "network" || type === "server-error" || type === "socket-error") lobbyMsg("Sunucu bağlantısı koptu, oyun bağlıysa devam eder.", true);
-    });
+    p.on("error", err => fail(Object.assign(new Error(err && err.type || "error"), { type: err && err.type })));
     p.on("disconnected", () => { try { if (!p.destroyed) p.reconnect(); } catch (e) {} });
     clearInterval(hbTimer);
     hbTimer = setInterval(() => {
-      pub();
-      if (conn && opp.present && Date.now() - lastHeard > 8000) { try { conn.close(); } catch (e) {} conn = null; syncOpp([]); }
-    }, 1000);
+      send({ t: "ping" });
+      if (conn && G.phase !== "lobby" && Date.now() - lastHeard > 10000) { try { conn.close(); } catch (e) {} conn = null; connectionLost(); }
+    }, 2000);
   });
 }
-async function leaveRoom() {
+function leaveRoom() {
   clearInterval(hbTimer); hbTimer = null;
   try { conn && conn.close(); } catch (e) {}
   try { peerObj && peerObj.destroy(); } catch (e) {}
-  conn = null; peerObj = null; roomH = null;
-  oppPeer = null; opp.present = false;
+  conn = null; peerObj = null;
 }
 
-/* ---------- game flow ---------- */
-function setPhase(p, dur, b, sb) { phase = p; phaseEnd = now() + (dur || 0); banner = b || ""; subBanner = sb || ""; }
-function resetRound() {
-  for (const f of mode === "bot" ? [me, opp] : [me]) {
-    f.hp = MAXHP; f.ammo = MAXAMMO; f.reloadUntil = 0; f.up = false; f.downSince = -9;
+/* ================= input ================= */
+let ptr = null;
+const joy = $("joy"), knob = $("knob");
+const keys = new Set();
+canvas.addEventListener("pointerdown", e => {
+  if (G.mode === "menu" || ptr) return;
+  e.preventDefault();
+  if (ac && ac.state === "suspended") ac.resume();
+  let kind = null;
+  if (camMode() === "hider" && canMoveHider()) kind = "joy";
+  else if (camMode() === "shooter" && amShooter() && (G.phase === "hide" || G.phase === "shoot")) kind = "look";
+  if (!kind) return;
+  ptr = { id: e.pointerId, kind, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, moved: false, jx: 0, jy: 0 };
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  if (kind === "joy") { joy.hidden = false; joy.style.left = e.clientX + "px"; joy.style.top = e.clientY + "px"; knob.style.transform = "translate(0,0)"; }
+});
+canvas.addEventListener("pointermove", e => {
+  if (!ptr || e.pointerId !== ptr.id) return;
+  const dx = e.clientX - ptr.x, dy = e.clientY - ptr.y;
+  ptr.x = e.clientX; ptr.y = e.clientY;
+  if (Math.hypot(e.clientX - ptr.x0, e.clientY - ptr.y0) > 10) ptr.moved = true;
+  if (ptr.kind === "joy") {
+    let jx = e.clientX - ptr.x0, jy = e.clientY - ptr.y0;
+    const l = Math.hypot(jx, jy), max = 50;
+    if (l > max) { jx = jx / l * max; jy = jy / l * max; }
+    ptr.jx = jx / max; ptr.jy = jy / max;
+    knob.style.transform = `translate(${jx}px,${jy}px)`;
+  } else {
+    G.yaw = clamp(G.yaw - dx * 0.005, -1.0, 1.0);
+    G.pitch = clamp(G.pitch - dy * 0.004, -1.1, 0.25);
   }
-  pending.length = 0; pub();
+});
+function endPtr(e) {
+  if (!ptr || e.pointerId !== ptr.id) return;
+  if (ptr.kind === "look" && !ptr.moved) fire(e.clientX, e.clientY);
+  if (ptr.kind === "joy") joy.hidden = true;
+  ptr = null;
 }
-function startMatch() {
-  me.d = 0; lastMeD = 0; lastOppD = 0;
-  if (mode === "bot") { opp.d = 0; opp.m = me.m; }
-  resetRound(); setPhase("countdown", 3);
+canvas.addEventListener("pointerup", endPtr);
+canvas.addEventListener("pointercancel", endPtr);
+canvas.addEventListener("contextmenu", e => e.preventDefault());
+window.addEventListener("keydown", e => { keys.add(e.code); });
+window.addEventListener("keyup", e => keys.delete(e.code));
+window.addEventListener("blur", () => { keys.clear(); if (ptr) { joy.hidden = true; ptr = null; } });
+
+/* ================= main loop ================= */
+let camInit = true, lastT = now(), losTimer = 0, seenState = null;
+const camPos = new THREE.Vector3(), camLook = new THREE.Vector3(), lookTmp = new THREE.Vector3();
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.fov = w / h < 1 ? 78 : 60;
+  camera.updateProjectionMatrix();
+}
+addEventListener("resize", resize); resize();
+
+function hiderVisibleToShooter() {
+  const eye = new THREE.Vector3(SHOOTER_POS.x, PY + 2.3, SHOOTER_POS.z + 1.0);
+  for (const hy of [1.15, 0.7, 0.3]) {
+    for (const ox of [-0.22, 0, 0.22]) {
+      const target = new THREE.Vector3(G.hx + ox, hy, G.hz);
+      const dir = target.clone().sub(eye), dist = dir.length();
+      raycaster.set(eye, dir.normalize()); raycaster.far = dist - 0.3;
+      const hit = raycaster.intersectObject(blockMesh, false)[0];
+      raycaster.far = Infinity;
+      if (!hit) return true;
+    }
+  }
+  return false;
 }
 
 function update(dt) {
   const t = now();
-  // impacts
-  for (let i = pending.length - 1; i >= 0; i--) {
-    const p = pending[i];
-    if (t >= p.at) { pending.splice(i, 1); const res = resolveImpact(p); onImpactResult(p, res); if (p.target === me) pub(); }
-  }
-  // reload
-  for (const f of [me, opp]) {
-    if (mode === "online" && f === opp) continue;
-    if (f.ammo === 0 && f.reloadUntil && t >= f.reloadUntil) { f.ammo = MAXAMMO; f.reloadUntil = 0; if (f === me) pub(); }
-  }
-  // bot
-  if (mode === "bot" && phase === "play" && opp.hp > 0) {
-    if (!opp.up) {
-      if (t > opp.nextAt && opp.ammo > 0 && t >= opp.reloadUntil) { raise(opp); opp.holdFor = 0.25 + Math.random() * 0.6; }
-    } else {
-      const held = t - opp.upSince, z = zone(aimAt(opp, t));
-      const good = z === "body" || z === "head";
-      const scared = me.up && t - me.upSince > 0.35 && Math.random() < 0.012;
-      if ((held > opp.holdFor && good && Math.random() < 0.22) || held > opp.holdFor + 0.9 || scared) {
-        release(opp); opp.nextAt = t + 0.45 + Math.random() * 1.3;
-      }
+  // hider movement
+  if (canMoveHider() && camMode() === "hider") {
+    let mx = 0, mz = 0;
+    if (ptr && ptr.kind === "joy") { mx = ptr.jx; mz = ptr.jy; }
+    if (keys.has("KeyA") || keys.has("ArrowLeft")) mx -= 1;
+    if (keys.has("KeyD") || keys.has("ArrowRight")) mx += 1;
+    if (keys.has("KeyW") || keys.has("ArrowUp")) mz -= 1;
+    if (keys.has("KeyS") || keys.has("ArrowDown")) mz += 1;
+    const l = Math.hypot(mx, mz);
+    if (l > 0.15) {
+      if (l > 1) { mx /= l; mz /= l; }
+      const sx = mx * SPEED * dt, sz = mz * SPEED * dt;
+      if (!blockedAt(G.hx + sx, G.hz)) G.hx += sx;
+      if (!blockedAt(G.hx, G.hz + sz)) G.hz += sz;
+      G.hry = Math.atan2(mx, mz);
+      walkT += dt * 10;
     }
-  }
-  // online presence of opponent
-  if (mode === "online") {
-    if (!opp.present && phase !== "wait") { setPhase("wait", 0, "Rakip bekleniyor", "Oda kodu: " + roomCode); me.up = false; pub(); }
-    if (opp.present && phase === "wait") { showLobby(false); startMatch(); }
-    if (opp.m > me.m && (phase === "matchEnd" || phase === "rematch")) { me.m = opp.m; me.d = 0; lastMeD = 0; pub(); setPhase("rematch", 0, "Rövanş!", ""); }
-    if (phase === "rematch" && opp.m === me.m && opp.d === 0 && me.d === 0) { lastOppD = 0; resetRound(); setPhase("countdown", 3); }
-  }
-  // death bookkeeping
-  if (me.d < lastMeD) lastMeD = me.d;
-  if (opp.d < lastOppD) lastOppD = opp.d;
-  if ((me.d > lastMeD || opp.d > lastOppD) && (phase === "play" || phase === "countdown")) {
-    const iWon = opp.d > lastOppD;
-    lastMeD = me.d; lastOppD = opp.d;
-    if (me.up) { me.up = false; me.downSince = t; pub(); }
-    if (me.d >= WIN || opp.d >= WIN) setPhase("roundEnd", 2.2, iWon ? "Kazandın!" : "Kaybettin", iWon ? "Düelloyu aldın" : opp.name + " düelloyu aldı");
-    else setPhase("roundEnd", 2.2, iWon ? "Raundu aldın" : "Vuruldun", me.d + opp.d + 1 + ". raunt geliyor");
-    sfx(iWon ? "win" : "lose");
-  }
-  if (phase === "countdown" && t >= phaseEnd) setPhase("play", 0);
-  if (phase === "roundEnd" && t >= phaseEnd) {
-    if (me.d >= WIN || opp.d >= WIN) setPhase("matchEnd", 0, me.d >= WIN ? "Kaybettin" : "Kazandın!", "Skor " + opp.d + " – " + me.d);
-    else { resetRound(); setPhase("countdown", 3); }
-  }
-  $("endBox").hidden = !(phase === "matchEnd" || phase === "rematch");
-  $("rematchBtn").disabled = phase === "rematch";
-  $("rematchBtn").textContent = phase === "rematch" ? "Rakip bekleniyor…" : "Rövanş";
-
-  // fx
-  shake = Math.max(0, shake - dt * 60);
-  for (let i = parts.length - 1; i >= 0; i--) {
-    const p = parts[i]; p.life -= dt; p.vy += 900 * S * dt; p.x += p.vx * dt; p.y += p.vy * dt;
-    if (p.life <= 0) parts.splice(i, 1);
-  }
-  for (let i = floats.length - 1; i >= 0; i--) if (t - floats[i].t0 > 1.1) floats.splice(i, 1);
-  for (let i = bullets.length - 1; i >= 0; i--) {
-    const b = bullets[i];
-    if (!b.done && t - b.t0 >= TRAVEL) {
-      b.done = true;
-      const tg = b.fromMe ? opp : me, tx = b.fromMe ? OPX : MEX, dir = b.fromMe ? -1 : 1;
-      const exposed = tg.up && t - tg.upSince > RAISE * 0.7 && zone(b.a) !== "low" && zone(b.a) !== "high";
-      if (exposed) burst(tx, aimY(b.a), "#ff9c8a", 14);
-      else if (zone(b.a) !== "high") burst(tx + dir * 20 * S, Math.max(aimY(b.a), GY - 86 * S), "#d9a066", 12);
+    G.thx = G.hx; G.thz = G.hz;
+    // if a block fell onto the hider's cell, nudge out
+    if (blockedAt(G.hx, G.hz)) {
+      for (const [ox, oz] of [[0.6, 0], [-0.6, 0], [0, 0.6], [0, -0.6], [0.6, 0.6], [-0.6, 0.6]]) if (!blockedAt(G.hx + ox, G.hz + oz)) { G.hx += ox; G.hz += oz; break; }
     }
-    if (t - b.t0 > TRAVEL + 0.2) bullets.splice(i, 1);
-  }
-}
-
-function burst(x, y, col, n) {
-  for (let i = 0; i < n; i++) parts.push({ x, y, vx: (Math.random() - 0.5) * 500 * S, vy: -Math.random() * 420 * S, life: 0.35 + Math.random() * 0.35, col, r: (2 + Math.random() * 3) * S });
-}
-
-/* ---------- drawing ---------- */
-function resize() {
-  DPR = Math.min(window.devicePixelRatio || 1, 2);
-  W = window.innerWidth; H = window.innerHeight;
-  cv.width = W * DPR; cv.height = H * DPR;
-  cx.setTransform(DPR, 0, 0, DPR, 0, 0);
-  S = Math.min(W / 760, H / 430);
-  GY = H * 0.8;
-  MEX = Math.max(W * 0.2, 70 * S); OPX = W - MEX;
-  let seed = 7; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const mesas = [];
-  let x = -40;
-  while (x < W + 60) { const w = (80 + r() * 160) * S; mesas.push({ x, w, h: (40 + r() * 110) * S }); x += w * (0.6 + r() * 0.5); }
-  const stars = Array.from({ length: 50 }, () => ({ x: r() * W, y: r() * GY * 0.55, a: 0.3 + r() * 0.6 }));
-  const cacti = [{ x: W * 0.5 - 30 * S, h: 70 * S }, { x: W * 0.62, h: 46 * S }, { x: W * 0.36, h: 38 * S }];
-  scenery = { mesas, stars, cacti };
-}
-function aimY(a) { return GY - 110 * S - a * 56 * S; }
-
-function drawBackground(t) {
-  const g = cx.createLinearGradient(0, 0, 0, GY);
-  g.addColorStop(0, "#1b1030"); g.addColorStop(0.55, "#5b2a4a"); g.addColorStop(1, "#d4643f");
-  cx.fillStyle = g; cx.fillRect(0, 0, W, GY);
-  for (const s of scenery.stars) { cx.globalAlpha = s.a * (0.7 + 0.3 * Math.sin(t * 2 + s.x)); cx.fillStyle = "#ffe9d6"; cx.fillRect(s.x, s.y, 1.6, 1.6); }
-  cx.globalAlpha = 1;
-  // sun
-  const sg = cx.createRadialGradient(W / 2, GY - 10 * S, 5, W / 2, GY - 10 * S, 120 * S);
-  sg.addColorStop(0, "rgba(255,210,120,.95)"); sg.addColorStop(0.35, "rgba(255,160,90,.55)"); sg.addColorStop(1, "rgba(255,120,80,0)");
-  cx.fillStyle = sg; cx.fillRect(0, 0, W, GY);
-  cx.fillStyle = "#ffcf7a"; cx.beginPath(); cx.arc(W / 2, GY - 6 * S, 46 * S, Math.PI, 0); cx.fill();
-  // mesas
-  cx.fillStyle = "#3a1d33";
-  for (const m of scenery.mesas) {
-    cx.beginPath(); cx.moveTo(m.x, GY); cx.lineTo(m.x + m.w * 0.15, GY - m.h); cx.lineTo(m.x + m.w * 0.85, GY - m.h); cx.lineTo(m.x + m.w, GY); cx.fill();
-  }
-  // ground
-  const gg = cx.createLinearGradient(0, GY, 0, H);
-  gg.addColorStop(0, "#5a3328"); gg.addColorStop(1, "#24130f");
-  cx.fillStyle = gg; cx.fillRect(0, GY, W, H - GY);
-  cx.fillStyle = "rgba(0,0,0,.18)";
-  for (let i = 0; i < 9; i++) cx.fillRect(((i * 137) % W), GY + 14 * S + (i % 3) * 18 * S, 40 * S, 2);
-  // cacti
-  cx.fillStyle = "#2a1626";
-  for (const c of scenery.cacti) {
-    const w = c.h * 0.22;
-    rr(c.x - w / 2, GY - c.h, w, c.h, w / 2);
-    rr(c.x - w * 1.9, GY - c.h * 0.7, w * 0.8, c.h * 0.38, w * 0.4); rr(c.x - w * 1.9, GY - c.h * 0.38, w * 1.6, w * 0.6, w * 0.3);
-    rr(c.x + w * 1.1, GY - c.h * 0.85, w * 0.8, c.h * 0.4, w * 0.4); rr(c.x + w * 0.3, GY - c.h * 0.5, w * 1.6, w * 0.6, w * 0.3);
-  }
-}
-function rr(x, y, w, h, r) { cx.beginPath(); cx.roundRect ? cx.roundRect(x, y, w, h, r) : cx.rect(x, y, w, h); cx.fill(); }
-
-function drawFighter(f, x, dir, col, t) {
-  let r;
-  if (f.up) r = clamp((t - f.upSince) / RAISE, 0, 1);
-  else r = clamp(1 - (t - f.downSince) / RAISE, 0, 1);
-  r = ease(r);
-  const dead = f.hp <= 0;
-  const top = GY - lerp(62, 172, r) * S;
-  const flash = t < f.flashUntil;
-  const body = dead ? "#5b4a52" : flash ? "#ffffff" : "#6a4436";
-  // legs/torso
-  cx.fillStyle = body;
-  rr(x - 22 * S, top + 34 * S, 44 * S, GY - (top + 34 * S), 12 * S);
-  // vest
-  cx.fillStyle = dead ? "#4a3b44" : flash ? "#fff" : "#3c2a33";
-  rr(x - 22 * S, top + 44 * S, 44 * S, Math.max(0, Math.min(46 * S, GY - (top + 44 * S))), 8 * S);
-  // scarf
-  cx.fillStyle = dead ? "#777" : col;
-  rr(x - 20 * S, top + 34 * S, 40 * S, 10 * S, 4 * S);
-  // head
-  cx.fillStyle = dead ? "#8a7a80" : flash ? "#fff" : "#e8b48f";
-  cx.beginPath(); cx.arc(x, top + 18 * S, 17 * S, 0, Math.PI * 2); cx.fill();
-  // eye
-  cx.fillStyle = "#2a1a1a";
-  if (dead) { cx.font = `700 ${12 * S}px ${getComputedStyle(document.documentElement).getPropertyValue("--body")}`; cx.textAlign = "center"; cx.fillText("x", x + dir * 7 * S, top + 20 * S); }
-  else { cx.beginPath(); cx.arc(x + dir * 8 * S, top + 16 * S, 2.4 * S, 0, Math.PI * 2); cx.fill(); }
-  // hat
-  cx.fillStyle = dead ? "#3d3036" : "#2b1a1c";
-  rr(x - 27 * S, top + 2 * S, 54 * S, 6 * S, 3 * S);
-  rr(x - 15 * S, top - 12 * S, 30 * S, 16 * S, 6 * S);
-  cx.fillStyle = dead ? "#666" : col; cx.fillRect(x - 15 * S, top - 1 * S, 30 * S, 3 * S);
-  // arm + gun
-  if (r > 0.55 && !dead) {
-    const sy = top + 56 * S;
-    cx.strokeStyle = "#6a4436"; cx.lineWidth = 10 * S; cx.lineCap = "round";
-    cx.beginPath(); cx.moveTo(x, sy); cx.lineTo(x + dir * 44 * S, sy - 4 * S); cx.stroke();
-    cx.fillStyle = "#1b1416";
-    cx.fillRect(dir > 0 ? x + 40 * S : x - 72 * S, sy - 10 * S, 32 * S, 8 * S);
-    cx.fillRect(dir > 0 ? x + 40 * S : x - 50 * S, sy - 6 * S, 10 * S, 14 * S);
-  }
-}
-function drawCrate(x) {
-  const w = 92 * S, h = 88 * S, l = x - w / 2, tp = GY - h;
-  cx.fillStyle = "#8a5a32"; rr(l, tp, w, h, 4 * S);
-  cx.fillStyle = "#6f4426";
-  for (let i = 1; i < 4; i++) cx.fillRect(l, tp + (h / 4) * i - 1.5 * S, w, 3 * S);
-  cx.strokeStyle = "#5a3520"; cx.lineWidth = 6 * S;
-  cx.beginPath(); cx.moveTo(l + 6 * S, tp + 6 * S); cx.lineTo(l + w - 6 * S, tp + h - 6 * S); cx.stroke();
-  cx.strokeStyle = "#a8743f"; cx.lineWidth = 3 * S; cx.strokeRect(l + 1.5 * S, tp + 1.5 * S, w - 3 * S, h - 3 * S);
-}
-function drawCrosshair(t) {
-  if (!me.up || phase !== "play" || me.hp <= 0) return;
-  const held = t - me.upSince;
-  const a = aimAt(me, t), y = aimY(a), x = OPX, z = zone(a);
-  const ready = held >= MINAIM && me.ammo > 0 && t >= me.reloadUntil;
-  const col = !ready ? "rgba(255,255,255,.35)" : z === "head" ? "#ffc65c" : z === "body" ? "#ff6b5c" : "rgba(255,255,255,.6)";
-  cx.strokeStyle = col; cx.lineWidth = 2.5 * S;
-  cx.beginPath(); cx.arc(x, y, 14 * S, 0, Math.PI * 2); cx.stroke();
-  cx.beginPath();
-  cx.moveTo(x - 24 * S, y); cx.lineTo(x - 8 * S, y); cx.moveTo(x + 8 * S, y); cx.lineTo(x + 24 * S, y);
-  cx.moveTo(x, y - 24 * S); cx.lineTo(x, y - 8 * S); cx.moveTo(x, y + 8 * S); cx.lineTo(x, y + 24 * S);
-  cx.stroke();
-  // aim rail
-  cx.fillStyle = "rgba(255,255,255,.12)"; cx.fillRect(x + 40 * S, aimY(1.22), 4 * S, aimY(-1.22) - aimY(1.22));
-  cx.fillStyle = "rgba(255,198,92,.55)"; cx.fillRect(x + 40 * S, aimY(1.02), 4 * S, aimY(0.58) - aimY(1.02));
-  cx.fillStyle = "rgba(255,107,92,.45)"; cx.fillRect(x + 40 * S, aimY(0.58), 4 * S, aimY(-0.45) - aimY(0.58));
-  cx.fillStyle = col; cx.fillRect(x + 36 * S, y - 2 * S, 12 * S, 4 * S);
-}
-function drawBullets(t) {
-  for (const b of bullets) {
-    const k = clamp((t - b.t0) / TRAVEL, 0, 1);
-    const sx = b.fromMe ? MEX + 72 * S : OPX - 72 * S, sy = GY - 172 * S + 50 * S;
-    const ex = b.fromMe ? OPX : MEX, ey = aimY(b.a);
-    if (t - b.t0 < 0.07) { // muzzle flash
-      cx.fillStyle = "rgba(255,220,140,.95)"; cx.beginPath(); cx.arc(sx, sy, 12 * S, 0, Math.PI * 2); cx.fill();
-    }
-    if (k < 1) {
-      const x = lerp(sx, ex, k), y = lerp(sy, ey, k), px = lerp(sx, ex, Math.max(0, k - 0.12)), py = lerp(sy, ey, Math.max(0, k - 0.12));
-      cx.strokeStyle = "rgba(255,230,170,.9)"; cx.lineWidth = 3 * S; cx.lineCap = "round";
-      cx.beginPath(); cx.moveTo(px, py); cx.lineTo(x, y); cx.stroke();
-    }
-  }
-}
-function heart(x, y, sz, on) {
-  cx.fillStyle = on ? "#ff5d5d" : "rgba(255,255,255,.18)";
-  cx.beginPath();
-  cx.moveTo(x, y + sz * 0.3);
-  cx.bezierCurveTo(x, y, x - sz * 0.5, y, x - sz * 0.5, y + sz * 0.3);
-  cx.bezierCurveTo(x - sz * 0.5, y + sz * 0.6, x, y + sz * 0.8, x, y + sz);
-  cx.bezierCurveTo(x, y + sz * 0.8, x + sz * 0.5, y + sz * 0.6, x + sz * 0.5, y + sz * 0.3);
-  cx.bezierCurveTo(x + sz * 0.5, y, x, y, x, y + sz * 0.3);
-  cx.fill();
-}
-function txt(s, x, y, size, col, align, font) {
-  cx.font = `${size}px ${font || '"Bungee", Impact, sans-serif'}`;
-  cx.textAlign = align || "center"; cx.textBaseline = "middle";
-  cx.lineWidth = Math.max(3, size / 7); cx.strokeStyle = "rgba(20,8,16,.85)"; cx.strokeText(s, x, y);
-  cx.fillStyle = col; cx.fillText(s, x, y);
-}
-function drawHud(t) {
-  const top = 22 + (parseFloat(getComputedStyle(document.documentElement).paddingTop) || 0) + 34;
-  const fs = clamp(16 * S, 12, 22);
-  // names + hearts
-  txt(me.name, MEX, top, fs, "#38d3c0");
-  txt(opp.name, OPX, top, fs, "#ff7d5c");
-  const hs = clamp(18 * S, 13, 24);
-  for (let i = 0; i < MAXHP; i++) {
-    heart(MEX + (i - 1) * hs * 1.3, top + fs * 0.9, hs, i < me.hp);
-    heart(OPX + (i - 1) * hs * 1.3, top + fs * 0.9, hs, i < opp.hp);
-  }
-  // score
-  txt(opp.d + " – " + me.d, W / 2, top + 4, clamp(30 * S, 22, 40), "#fff4e6");
-  txt("İLK " + WIN + " RAUNT", W / 2, top + clamp(30 * S, 22, 40) * 0.95, clamp(10 * S, 9, 13), "rgba(255,244,230,.6)", "center", '"Rubik", sans-serif');
-  // ammo
-  const ay = Math.min(H - 26 - (parseFloat(getComputedStyle(document.documentElement).paddingBottom) || 0), GY + 60 * S);
-  for (let i = 0; i < MAXAMMO; i++) {
-    cx.fillStyle = i < me.ammo ? "#ffc65c" : "rgba(255,255,255,.16)";
-    rr(MEX - 40 * S + i * 18 * S, ay - 12 * S, 9 * S, 24 * S, 4 * S);
-  }
-  if (me.ammo === 0 && me.reloadUntil > t) {
-    const k = 1 - (me.reloadUntil - t) / RELOAD;
-    cx.fillStyle = "rgba(255,255,255,.15)"; rr(MEX - 40 * S, ay + 18 * S, 82 * S, 6 * S, 3 * S);
-    cx.fillStyle = "#ffc65c"; rr(MEX - 40 * S, ay + 18 * S, 82 * S * k, 6 * S, 3 * S);
-    txt("DOLDURULUYOR", MEX, ay + 36 * S, clamp(10 * S, 9, 13), "#ffc65c", "center", '"Rubik", sans-serif');
-  }
-  for (let i = 0; i < MAXAMMO; i++) {
-    cx.fillStyle = i < opp.ammo ? "rgba(255,198,92,.7)" : "rgba(255,255,255,.12)";
-    rr(OPX - 40 * S + i * 18 * S, ay - 12 * S, 9 * S, 24 * S, 4 * S);
-  }
-  // hint
-  if (phase === "play" && !me.up && me.d + opp.d === 0 && me.ammo === MAXAMMO) {
-    txt("Basılı tut → nişan al, bırak → ateş", W / 2, GY + 34 * S, clamp(13 * S, 11, 16), "rgba(255,244,230,.8)", "center", '"Rubik", sans-serif');
-  }
-  // banners
-  if (phase === "countdown") {
-    const n = Math.ceil(phaseEnd - t);
-    txt(n > 0 ? String(n) : "ATEŞ!", W / 2, H * 0.38, clamp(70 * S, 44, 96), "#ffc65c");
-  } else if (phase === "play" && t - (phaseEnd) < 0.6 && phaseEnd > 0) {
-    txt("ATEŞ!", W / 2, H * 0.38, clamp(70 * S, 44, 96), "#ffc65c");
-  }
-  if (banner && phase !== "countdown" && phase !== "play") {
-    txt(banner, W / 2, H * 0.36, clamp(48 * S, 30, 64), "#fff4e6");
-    if (subBanner) txt(subBanner, W / 2, H * 0.36 + clamp(40 * S, 28, 52), clamp(15 * S, 12, 19), "#ffd9b8", "center", '"Rubik", sans-serif');
-  }
-  for (const f of floats) {
-    const k = (t - f.t0) / 1.1;
-    cx.globalAlpha = 1 - k;
-    txt(f.text, f.x, f.y - k * 40 * S, clamp(20 * S, 14, 26), f.col);
-    cx.globalAlpha = 1;
-  }
-  if (H > W * 1.15) txt("Telefonu yatay çevir, daha rahat oynarsın", W / 2, H - 40 - (parseFloat(getComputedStyle(document.documentElement).paddingBottom) || 0), 13, "rgba(255,244,230,.75)", "center", '"Rubik", sans-serif');
-}
-
-let last = now();
-function frame() {
-  const t = now(), dt = Math.min(0.05, t - last); last = t;
-  if (mode !== "menu") update(dt);
-  cx.save();
-  if (shake > 0) cx.translate((Math.random() - 0.5) * shake * S, (Math.random() - 0.5) * shake * S);
-  drawBackground(t);
-  // ground shadows
-  cx.fillStyle = "rgba(0,0,0,.25)";
-  for (const x of [MEX, OPX]) { cx.beginPath(); cx.ellipse(x + (x === MEX ? 15 : -15) * S, GY + 4 * S, 80 * S, 9 * S, 0, 0, Math.PI * 2); cx.fill(); }
-  if (mode === "menu") {
-    const demo = { ...me, up: Math.sin(t * 1.3) > 0.2, upSince: t - 1, downSince: t - 1, hp: 1, flashUntil: 0 };
-    const demo2 = { ...opp, up: Math.sin(t * 1.3 + 2.4) > 0.2, upSince: t - 1, downSince: t - 1, hp: 1, flashUntil: 0 };
-    drawFighter(demo, MEX, 1, "#38d3c0", t); drawFighter(demo2, OPX, -1, "#ff7d5c", t);
+    if (G.mode === "online" && G.phase === "shoot" && t - lastPosSent > 0.066) { lastPosSent = t; sendPos(false); }
   } else {
-    drawFighter(me, MEX, 1, "#38d3c0", t);
-    drawFighter(opp, OPX, -1, "#ff7d5c", t);
+    G.hx += (G.thx - G.hx) * Math.min(1, dt * 12);
+    G.hz += (G.thz - G.hz) * Math.min(1, dt * 12);
   }
-  drawCrate(MEX + 20 * S); drawCrate(OPX - 20 * S);
-  drawBullets(t);
-  for (const p of parts) { cx.globalAlpha = clamp(p.life * 2.5, 0, 1); cx.fillStyle = p.col; cx.fillRect(p.x, p.y, p.r, p.r); }
-  cx.globalAlpha = 1;
-  if (mode !== "menu") { drawCrosshair(t); drawHud(t); }
-  cx.restore();
-  if (t < hurtUntil) {
-    const k = (hurtUntil - t) / 0.35;
-    const vg = cx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.7);
-    vg.addColorStop(0, "rgba(255,40,40,0)"); vg.addColorStop(1, `rgba(255,40,40,${0.5 * k})`);
-    cx.fillStyle = vg; cx.fillRect(0, 0, W, H);
+  hiderMesh.position.set(G.hx, Math.abs(Math.sin(walkT)) * 0.06, G.hz);
+  hiderMesh.rotation.y = G.hry;
+  const flashing = t < hiderFlash;
+  hiderMesh.children[0].material.color.set(flashing ? (Math.floor(t * 20) % 2 ? "#ffffff" : "#ff4040") : "#2bb8a6");
+  // who sees the hider
+  let showHider;
+  if (G.mode === "hotseat") showHider = G.phase === "hide" || G.phase === "shoot" || G.phase === "end";
+  else showHider = amHider() || G.phase === "shoot" || G.phase === "end";
+  hiderMesh.visible = showHider && G.mode !== "menu";
+  ring.visible = camMode() === "hider";
+  // shooter aim
+  const syaw = amShooter() ? G.yaw : G.oppYaw;
+  shooterMesh.rotation.y = syaw;
+  shooterMesh.visible = camMode() !== "shooter";
+  if (G.mode === "online" && amShooter() && t - lastAimSent > 0.1) {
+    lastAimSent = t; const s = G.yaw.toFixed(2);
+    if (s !== lastAim) { lastAim = s; send({ t: "aim", y: +s }); }
   }
-  requestAnimationFrame(frame);
+  // blocks falling
+  let falling = false;
+  for (const b of blocks) {
+    if (!b.alive || b.vy === b.y) continue;
+    falling = true;
+    b.vel += 22 * dt; b.vy -= b.vel * dt;
+    if (b.vy <= b.y) { b.vy = b.y; b.vel = 0; spawnDebris(b.x + 0.5, b.y + 0.1, b.z + 0.5, b.col, 1, 3); }
+  }
+  if (falling) syncBlockMatrices(false);
+  updateProjs(); updateDebris(dt); updateBlasts(dt);
+  // timers / authority
+  if (isAuth()) {
+    if (G.phase === "hide" && t > G.phaseEnd) A_beginShoot();
+    else if (G.phase === "shoot" && t > G.phaseEnd) A_endRound(hiderIdx(), "time");
+  }
+  if (G.phase === "shoot" && amShooter() && G.ammo === 0 && G.projs.every(p => p.done) && !G.doneSent && t - G.lastBoomAt > 1.0) {
+    G.doneSent = true;
+    if (isAuth()) A_endRound(hiderIdx(), "ammo"); else send({ t: "done" });
+  }
+  // line of sight warning for hider
+  losTimer -= dt;
+  if (losTimer <= 0) {
+    losTimer = 0.2;
+    seenState = (amHider() && camMode() === "hider" && (G.phase === "hide" || G.phase === "shoot")) ? hiderVisibleToShooter() : null;
+  }
+  updateCamera(dt);
+  updateHud(t);
 }
-
-/* ---------- sound ---------- */
-let ac = null, muted = store("sd-mute") === "1";
-function sfx(kind) {
-  if (muted) return;
-  try {
-    if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
-    const t = ac.currentTime;
-    if (kind === "shot" || kind === "hurt" || kind === "hit") {
-      const len = kind === "shot" ? 0.18 : 0.1;
-      const buf = ac.createBuffer(1, ac.sampleRate * len, ac.sampleRate), d = buf.getChannelData(0);
-      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
-      const src = ac.createBufferSource(); src.buffer = buf;
-      const f = ac.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = kind === "shot" ? 1800 : kind === "hit" ? 3200 : 600;
-      const g = ac.createGain(); g.gain.value = kind === "shot" ? 0.35 : 0.5;
-      src.connect(f).connect(g).connect(ac.destination); src.start(t);
+let walkT = 0;
+function updateCamera(dt) {
+  const mode = G.mode === "menu" ? "menu" : camMode();
+  const wantFov = (camera.aspect < 1 ? 78 : 60) - (mode === "shooter" ? 8 : 0);
+  if (camera.fov !== wantFov) { camera.fov = wantFov; camera.updateProjectionMatrix(); }
+  if (mode === "shooter") {
+    const yaw = G.yaw, pitch = G.pitch;
+    camera.position.set(SHOOTER_POS.x + Math.sin(yaw) * 0.3, PY + 2.3, SHOOTER_POS.z + 1.0);
+    camera.rotation.set(pitch, Math.PI + yaw, 0);
+    camInit = true;
+  } else {
+    let tp, tl;
+    if (mode === "menu") {
+      const a = now() * 0.08;
+      tp = tmpV.set(Math.sin(a) * 16, 9, 7 + Math.cos(a) * 16); tl = lookTmp.set(0, 0.5, 7);
     } else {
-      const o = ac.createOscillator(), g = ac.createGain();
-      o.type = "triangle";
-      const notes = kind === "win" ? [523, 659, 784] : [392, 330, 262];
-      notes.forEach((n, i) => o.frequency.setValueAtTime(n, t + i * 0.12));
-      g.gain.setValueAtTime(0.18, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
-      o.connect(g).connect(ac.destination); o.start(t); o.stop(t + 0.5);
+      tp = tmpV.set(G.hx * 0.75, 6.2, Math.min(G.hz + 6.2, AZ1 + 5)); tl = lookTmp.set(G.hx * 0.85, 0.6, G.hz - 3.2);
     }
-  } catch (e) {}
+    if (camInit) { camPos.copy(tp); camLook.copy(tl); camInit = false; }
+    camPos.lerp(tp, Math.min(1, dt * 5)); camLook.lerp(tl, Math.min(1, dt * 5));
+    camera.position.copy(camPos); camera.lookAt(camLook);
+  }
+  if (shake > 0) {
+    camera.position.x += (Math.random() - 0.5) * shake; camera.position.y += (Math.random() - 0.5) * shake;
+    shake = Math.max(0, shake - dt * 1.4);
+  }
 }
 
-/* ---------- input ---------- */
-let holding = false;
-function down(e) {
-  if (mode === "menu" || phase === "matchEnd" || phase === "rematch") return;
-  if (e && e.target !== cv) return;
-  holding = true;
-  if (ac && ac.state === "suspended") ac.resume();
-  if (phase === "play") raise(me);
+/* ================= HUD ================= */
+let bannerUntil = 0;
+function flashBanner(title, text, ms) { $("bTitle").textContent = title; $("bText").textContent = text || ""; $("banner").hidden = false; bannerUntil = now() + ms / 1000; }
+function hideBanner() { $("banner").hidden = true; bannerUntil = 0; }
+let handoffCb = null;
+function showHandoff(title, text, btn, cb) { $("hTitle").textContent = title; $("hText").textContent = text; $("hBtn").textContent = btn; handoffCb = cb; $("handoff").hidden = false; }
+$("hBtn").onclick = () => { $("handoff").hidden = true; const cb = handoffCb; handoffCb = null; cb && cb(); sfx("tick"); };
+let ammoShown = -1;
+function setText(id, v) { const el = $(id); if (el.textContent !== v) el.textContent = v; }
+function updateHud(t) {
+  if (G.mode === "menu") return;
+  setText("n0", G.names[0]); setText("n1", G.names[1]);
+  setText("s0", String(G.score[0])); setText("s1", String(G.score[1]));
+  const live = G.phase === "hide" || G.phase === "shoot";
+  setText("phase", G.phase === "hide" ? "SAKLANMA" : G.phase === "shoot" ? "ATIŞ" : G.phase === "lobby" ? "" : "");
+  $("phase").style.color = G.phase === "hide" ? "var(--hide)" : "var(--shoot)";
+  setText("timer", live ? String(Math.max(0, Math.ceil(G.phaseEnd - t))) : "");
+  let role = "";
+  if (G.mode === "online" && live) role = amHider() ? "Sen saklanıyorsun" : "Sen nişancısın";
+  if (G.mode === "hotseat" && live) role = (G.phase === "hide" ? G.names[hiderIdx()] + " saklanıyor" : G.names[shooterIdx()] + " ateş ediyor");
+  setText("role", role);
+  const showAmmo = amShooter() && (G.phase === "shoot" || (G.phase === "hide" && G.mode === "online"));
+  const want = showAmmo ? G.ammo : -2;
+  if (want !== ammoShown) {
+    ammoShown = want;
+    $("ammo").innerHTML = showAmmo ? Array.from({ length: AMMO }, (_, i) => `<i class="${i < G.ammo ? "" : "off"}"></i>`).join("") : "";
+  }
+  $("readyBtn").hidden = !(G.phase === "hide" && amHider() && camMode() === "hider");
+  let hint = "";
+  if (G.phase === "hide" && amHider() && camMode() === "hider") hint = "Parmağını sürükle, duvarın arkasına geç";
+  else if (G.phase === "hide" && amShooter()) hint = "Rakip saklanıyor. Etrafa bakmak için sürükle";
+  else if (G.phase === "shoot" && amShooter()) hint = G.ammo > 0 ? "Dokun: ateş et · Sürükle: bak" : "Mermi bitti";
+  else if (G.phase === "shoot" && amHider()) hint = "Kaç! Siperin yıkılırsa yer değiştir";
+  setText("hint", hint); $("hint").hidden = !hint;
+  const seen = $("seen");
+  if (seenState === null) seen.hidden = true;
+  else {
+    seen.hidden = false;
+    seen.className = seenState ? "" : "safe";
+    setText("seen", seenState ? "GÖRÜNÜYORSUN!" : "Gizlisin");
+  }
+  if (bannerUntil && t > bannerUntil) hideBanner();
 }
-function up() { if (!holding) return; holding = false; release(me); }
-cv.addEventListener("pointerdown", e => { e.preventDefault(); down(e); });
-window.addEventListener("pointerup", up);
-window.addEventListener("pointercancel", up);
-window.addEventListener("blur", up);
-window.addEventListener("keydown", e => { if (e.code === "Space" && !e.repeat && mode !== "menu") { e.preventDefault(); holding = true; if (phase === "play") raise(me); } });
-window.addEventListener("keyup", e => { if (e.code === "Space") up(); });
-cv.addEventListener("contextmenu", e => e.preventDefault());
 
-/* ---------- menus ---------- */
-let roomCode = "";
-const nameIn = $("nameIn"), codeIn = $("codeIn");
-nameIn.value = store("sd-name") || "";
-function myName() { const n = nameIn.value.trim().slice(0, 14) || "Kovboy"; store("sd-name", n); return n; }
-function showMenu(v) { $("menu").hidden = !v; }
-function showLobby(v) { $("lobby").hidden = !v; }
-function lobbyMsg(m, err) { const el = $("lobbyStatus"); el.textContent = m; el.classList.toggle("err", !!err); }
-function enterGame(m) {
-  mode = m; showMenu(false); $("hudBtns").hidden = false;
-  me = fighter(myName()); opp = fighter(m === "bot" ? "Bot Kemal" : "Rakip");
-  bullets.length = parts.length = floats.length = pending.length = 0;
-  myShotIds.clear();
+/* ================= menus ================= */
+const nameIn = $("nameIn"), name2In = $("name2In"), codeIn = $("codeIn");
+nameIn.value = store("sd3-name") || ""; name2In.value = store("sd3-name2") || "";
+const myName = () => { const n = nameIn.value.trim().slice(0, 14) || "Oyuncu"; store("sd3-name", n); return n; };
+function startGame(mode) {
+  G.token++;
+  G.mode = mode; G.score = [0, 0]; G.round = 0;
+  $("menu").hidden = true; $("hud").hidden = false; $("over").hidden = true;
   try { navigator.wakeLock && navigator.wakeLock.request("screen").catch(() => {}); } catch (e) {}
+  sfx("tick");
 }
-$("botBtn").onclick = () => { sfx("none"); enterGame("bot"); opp.nextAt = now() + 4; startMatch(); };
+$("localBtn").onclick = () => {
+  const n2 = name2In.value.trim().slice(0, 14) || "Oyuncu 2"; store("sd3-name2", n2);
+  startGame("hotseat"); G.names = [myName(), n2]; G.myIdx = 0;
+  A_startRound(0);
+};
 function genCode() { const A = "ABCDEFGHJKMNPRSTUVYZ23456789"; let s = ""; for (let i = 0; i < 4; i++) s += A[Math.floor(Math.random() * A.length)]; return s; }
 async function goOnline(code, host) {
-  roomCode = code;
-  enterGame("online");
-  setPhase("wait", 0, "Rakip bekleniyor", "Oda kodu: " + code);
+  startGame("online");
+  G.myIdx = host ? 0 : 1; G.names = ["Oyuncu 1", "Oyuncu 2"]; G.names[G.myIdx] = myName();
+  G.phase = "lobby"; roomCode = code;
+  buildBlocks(12345);
   $("codeOut").textContent = code;
-  lobbyMsg(host ? "Oda açılıyor…" : "Odaya bağlanılıyor…");
-  showLobby(true);
-  try { await joinRoom(code, host); if (host) lobbyMsg("Oda hazır. Rakip bekleniyor…"); }
-  catch (e) {
-    await leaveRoom();
+  $("lobbyStatus").classList.remove("err");
+  $("lobbyStatus").textContent = host ? "Oda açılıyor…" : "Odaya bağlanılıyor…";
+  $("lobby").hidden = false;
+  try {
+    await joinRoom(code, host);
+    if (host) $("lobbyStatus").textContent = "Oda hazır. Rakip bekleniyor…";
+  } catch (e) {
+    leaveRoom();
     if (host && e.type === "unavailable-id") return goOnline(genCode(), true);
-    lobbyMsg(e.type === "peer-unavailable" || e.message === "timeout"
-      ? "Bu kodla açık bir oda bulunamadı. Kodu kontrol et; oda kuran kişinin sayfası açık olmalı."
-      : "Bağlanılamadı. İnternet bağlantını kontrol edip tekrar dene.", true);
+    $("lobbyStatus").classList.add("err");
+    $("lobbyStatus").textContent = e.type === "peer-unavailable" || e.type === "timeout"
+      ? "Bu kodla açık oda bulunamadı. Kodu kontrol et; odayı kuran kişinin sayfası açık olmalı."
+      : "Bağlanılamadı. İnternetini kontrol edip tekrar dene.";
   }
 }
 $("hostBtn").onclick = () => goOnline(genCode(), true);
@@ -735,44 +946,41 @@ $("joinBtn").onclick = () => {
 };
 codeIn.addEventListener("keydown", e => { if (e.key === "Enter") $("joinBtn").click(); });
 $("copyBtn").onclick = () => {
-  const done = () => { $("copyBtn").textContent = "Kopyalandı"; setTimeout(() => $("copyBtn").textContent = "Kodu kopyala", 1500); };
-  try { navigator.clipboard.writeText(roomCode).then(done, () => {}); } catch (e) {}
+  try { navigator.clipboard.writeText(roomCode).then(() => { $("copyBtn").textContent = "Kopyalandı"; setTimeout(() => $("copyBtn").textContent = "Kodu kopyala", 1500); }, () => {}); } catch (e) {}
 };
 async function toMenu() {
-  await leaveRoom();
-  mode = "menu"; phase = "idle"; banner = "";
-  showLobby(false); showMenu(true); $("hudBtns").hidden = true; $("endBox").hidden = true;
+  G.token++;
+  leaveRoom();
+  G.mode = "menu"; G.phase = "idle";
+  for (const id of ["lobby", "handoff", "over", "hud"]) $(id).hidden = true;
+  hideBanner(); $("menu").hidden = false; joy.hidden = true; ptr = null;
+  camInit = true; hiderMesh.visible = false;
 }
 $("cancelBtn").onclick = toMenu;
-$("exitBtn").onclick = toMenu;
-$("muteBtn").textContent = muted ? "Ses: kapalı" : "Ses: açık";
-$("muteBtn").onclick = () => { muted = !muted; store("sd-mute", muted ? "1" : "0"); $("muteBtn").textContent = muted ? "Ses: kapalı" : "Ses: açık"; };
+$("menuBtn").onclick = toMenu;
+$("overMenuBtn").onclick = toMenu;
 $("rematchBtn").onclick = () => {
-  if (mode === "bot") { me.m++; startMatch(); return; }
-  me.m = Math.max(me.m, opp.m) + 1; me.d = 0; lastMeD = 0; pub();
-  setPhase("rematch", 0, "Rövanş", "Rakibin onayı bekleniyor");
+  if (isAuth()) { G.score = [0, 0]; A_startRound(0); }
+  else { send({ t: "rematch" }); $("rematchBtn").disabled = true; $("rematchBtn").textContent = "Rakip bekleniyor…"; }
 };
+$("readyBtn").onclick = () => { if (isAuth()) A_beginShoot(); else send({ t: "ready" }); };
 
-function setOnlineAvailable(ok) {
-  $("hostBtn").disabled = !ok; $("joinBtn").disabled = !ok;
-  $("onlineNote").classList.remove("err");
-  $("onlineNote").textContent = ok
-    ? "Karşılıklı oynamak için biriniz “Oda kur” desin, diğeri aynı sayfayı açıp kodu girsin. Telefonlar birbirine doğrudan bağlanır."
-    : "Çevrimiçi bağlantı kütüphanesi yüklenemedi. Sayfayı yenile; olmazsa bota karşı oynayabilirsin.";
-}
-setOnlineAvailable(false);
-$("onlineNote").textContent = "Çevrimiçi bağlantı hazırlanıyor…";
 (async () => {
-  try {
-    for (let i = 0; i < 50 && !window.Peer; i++) await new Promise(r => setTimeout(r, 100));
-  } catch (e) {}
-  setOnlineAvailable(!!window.Peer);
+  for (let i = 0; i < 60 && !window.Peer; i++) await new Promise(r => setTimeout(r, 100));
+  const ok = !!window.Peer;
+  $("hostBtn").disabled = !ok; $("joinBtn").disabled = !ok;
+  $("onlineNote").textContent = ok
+    ? "Biriniz “Oda kur” desin, diğeri aynı sayfayı açıp kodu girsin. Telefonlar doğrudan bağlanır."
+    : "Bağlantı kütüphanesi yüklenemedi. Sayfayı yenile; olmazsa aynı telefonda oynayabilirsiniz.";
 })();
 
-window.addEventListener("resize", resize);
-resize();
-requestAnimationFrame(frame);
-})();
+buildBlocks(4242);
+hiderMesh.visible = false;
+renderer.setAnimationLoop(() => {
+  const t = now(), dt = Math.min(0.05, t - lastT); lastT = t;
+  update(dt);
+  renderer.render(scene, camera);
+});
 </script>
 </body>
 </html>
