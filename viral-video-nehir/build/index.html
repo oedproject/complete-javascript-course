@@ -1,0 +1,322 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="node_modules/@fontsource/montserrat/600.css">
+<link rel="stylesheet" href="node_modules/@fontsource/montserrat/800.css">
+<link rel="stylesheet" href="node_modules/@fontsource/montserrat/900.css">
+<style>html,body{margin:0;background:#000}canvas{display:block}#gl{position:absolute;left:-99999px}</style>
+<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js"}}</script>
+</head><body>
+<canvas id="out" width="1080" height="1920"></canvas>
+<script type="module">
+import * as THREE from 'three';
+const W = 1080, H = 1920;
+const TL = await (await fetch('timeline.json')).json();
+const TOTAL = TL.at(-1).start + TL.at(-1).dur;
+const MAXL = 1355;
+
+// ---------- deterministic noise ----------
+function hash(x, y, s) { let h = (x * 374761393 + y * 668265263 + s * 2147483647) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967295; }
+function vnoise(x, y, s) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash(xi, yi, s), b = hash(xi + 1, yi, s), c = hash(xi, yi + 1, s), d = hash(xi + 1, yi + 1, s);
+  return (a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v) * 2 - 1;
+}
+const fbm = (x, y, s, o = 6) => { let f = 0, a = .5, fr = 1; for (let i = 0; i < o; i++) { f += a * vnoise(x * fr, y * fr, s + i); fr *= 2.03; a *= .5; } return f; };
+const ridged = (x, y, s, o = 6) => { let f = 0, a = .5, fr = 1, w = 1; for (let i = 0; i < o; i++) { let n = 1 - Math.abs(vnoise(x * fr, y * fr, s + i)); n *= n; n *= w; w = Math.min(1, n * 2); f += a * n; fr *= 2.1; a *= .5; } return f; };
+function rng(seed) { return () => (seed = (seed * 16807) % 2147483647) / 2147483647; }
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+// ---------- looks ----------
+const LOOK = {
+  intro:      { top: 0x0d1636, hor: 0xf2a070, sun: 0xffc08a, sunDir: [-.8, .3, -.6], amb: .6, palette: 'green' },
+  ceyhan:     { top: 0x2c66aa, hor: 0xcfe2f2, sun: 0xfff4e2, sunDir: [.6, .7, -.4], amb: .8, palette: 'med' },
+  yesilirmak: { top: 0x2d5f96, hor: 0xc9dceb, sun: 0xfff6e6, sunDir: [-.5, .7, -.5], amb: .8, palette: 'green' },
+  dicle:      { top: 0x3a2e60, hor: 0xf0aa78, sun: 0xffb070, sunDir: [.9, .3, -.3], amb: .6, palette: 'dry' },
+  aras:       { top: 0x2a5a96, hor: 0xd6e2ec, sun: 0xffffff, sunDir: [-.6, .6, -.4], amb: .8, palette: 'steppe' },
+  seyhan:     { top: 0x2a6ab4, hor: 0xd8e9f6, sun: 0xfff2dc, sunDir: [.5, .75, -.5], amb: .8, palette: 'med' },
+  menderes:   { top: 0x2b5c9c, hor: 0xe8cfa8, sun: 0xffe2b0, sunDir: [-.7, .45, -.5], amb: .75, palette: 'med' },
+  murat:      { top: 0x274a7a, hor: 0xc4d2e0, sun: 0xeef4ff, sunDir: [.4, .6, -.7], amb: .8, palette: 'steppe' },
+  sakarya:    { top: 0x2d62a2, hor: 0xcfe0ee, sun: 0xfff3e2, sunDir: [-.4, .65, -.6], amb: .8, palette: 'green' },
+  firat:      { top: 0x1f2c58, hor: 0xf09a66, sun: 0xffb27a, sunDir: [-.85, .28, -.4], amb: .6, palette: 'dry' },
+  kizilirmak: { top: 0x161440, hor: 0xff9256, sun: 0xffc896, sunDir: [-.8, .24, -.5], amb: .6, palette: 'red' },
+  outro:      { top: 0x070b1e, hor: 0x56468a, sun: 0xb9c4ff, sunDir: [.5, .35, -.7], amb: .45, palette: 'green' },
+};
+// bank, low hills, high hills, rock, snow
+const PAL = {
+  green:  [0x5d7a3a, 0x4b7032, 0x6a7046, 0x7a7266, 0xf2f5fa],
+  med:    [0x8a9a5a, 0x6f8a44, 0x8c8058, 0x8a7a66, 0xf2f5fa],
+  dry:    [0x8a8a58, 0xa08a62, 0x9a7a58, 0x86705e, 0xf2f5fa],
+  steppe: [0x7a8a4e, 0x8e8a5a, 0x7e7660, 0x6e6a66, 0xf2f5fa],
+  red:    [0x7d8a4a, 0x9a7a52, 0xa86a4a, 0x8a5a46, 0xf2f5fa],
+};
+
+// ---------- three setup ----------
+const glCanvas = document.createElement('canvas'); glCanvas.id = 'gl'; document.body.appendChild(glCanvas);
+const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); renderer.setSize(W, H, false);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, W / H, 0.3, 900);
+const hemi = new THREE.HemisphereLight(0xffffff, 0x404040, .8); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffffff, 3.0); scene.add(sun);
+scene.fog = new THREE.Fog(0xffffff, 70, 230);
+
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, fog: false,
+  uniforms: { top: { value: new THREE.Color() }, hor: { value: new THREE.Color() }, sunc: { value: new THREE.Color() }, sdir: { value: new THREE.Vector3() }, stars: { value: 0 } },
+  vertexShader: `varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+  fragmentShader: `uniform vec3 top,hor,sunc,sdir; uniform float stars; varying vec3 vP;
+   float h(vec3 p){return fract(sin(dot(p,vec3(12.9898,78.233,45.164)))*43758.5453);}
+   void main(){ float y=max(vP.y,0.); vec3 c=mix(hor,top,pow(y,.55));
+     float s=max(dot(vP,normalize(sdir)),0.); c+=sunc*(pow(s,600.)*3.+pow(s,12.)*.35);
+     vec3 q=floor(vP*420.); float st=step(.9975,h(q))*smoothstep(.05,.5,y)*stars; c+=vec3(st);
+     gl_FragColor=vec4(c,1.); }`
+});
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(600, 48, 24), skyMat));
+
+// ---------- rivers ----------
+const SIZE = 240, SEG = 320;
+// river centreline x = path(z); flows from +z (behind camera) towards -z
+function riverDef(shape, seed) {
+  const R = rng(seed * 31 + 7); const ph = R() * 6, ph2 = R() * 6;
+  const P = {
+    plain:   { A: 7, f: .045, B: 3, f2: .11, w: 2.2, bank: 14, hill: .35, rough: .5 },
+    valley:  { A: 9, f: .05, B: 3, f2: .13, w: 1.8, bank: 7, hill: .75, rough: .8 },
+    canyon:  { A: 6, f: .06, B: 2, f2: .15, w: 1.6, bank: 2.5, hill: 1.0, rough: 1.0 },
+    meander: { A: 13, f: .085, B: 4, f2: .2, w: 1.6, bank: 10, hill: .45, rough: .6 },
+    intro:   { A: 10, f: .04, B: 4, f2: .1, w: 2.4, bank: 6, hill: .9, rough: .9 },
+    outro:   { A: 8, f: .05, B: 3, f2: .12, w: 2.0, bank: 8, hill: .7, rough: .8 },
+  }[shape];
+  const path = z => P.A * Math.sin(z * P.f + ph) + P.B * Math.sin(z * P.f2 + ph2);
+  const dpath = z => P.A * P.f * Math.cos(z * P.f + ph) + P.B * P.f2 * Math.cos(z * P.f2 + ph2);
+  const height = (x, z) => {
+    const d = Math.abs(x - path(z)) / Math.sqrt(1 + dpath(z) ** 2);   // ~perpendicular distance
+    const hills = P.rough * (ridged(x * .03 + ph, z * .03, seed) * .8 + .15) + (1 - P.rough) * (fbm(x * .02, z * .02, seed) * .5 + .5);
+    const far = smooth(P.w, P.w + P.bank, d);          // valley profile
+    const terr = .1 + hills * P.hill * (.35 + .65 * smooth(P.w + P.bank * .5, P.w + P.bank * 4, d));
+    const floor = .045 + fbm(x * .2, z * .2, seed + 4) * .01;
+    const bed = -.06 * (1 - smooth(0, P.w, d));
+    return d < P.w ? bed + .03 : floor + (terr - floor) * far;
+  };
+  return { P, path, dpath, height };
+}
+const VIS = 16; const WATER_Y = .05 * VIS;
+function flowTex() { const c = document.createElement('canvas'); c.width = 128; c.height = 512; const x = c.getContext('2d'); x.fillStyle = '#808080'; x.fillRect(0, 0, 128, 512);
+  const R = rng(11); for (let i = 0; i < 260; i++) { const a = .05 + R() * .18; x.fillStyle = R() > .5 ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a * .6})`; x.fillRect(R() * 128, R() * 512, 1 + R() * 3, 10 + R() * 50); }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(30, 8); return t; }
+const FLOW = flowTex();
+function buildScene(item, i) {
+  const look = LOOK[item.id]; const pal = PAL[look.palette].map(c => new THREE.Color(c));
+  const rv = riverDef(item.shape, i + 5);
+  const g = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG); g.rotateX(-Math.PI / 2);
+  const p = g.attributes.position;
+  for (let k = 0; k < p.count; k++) p.setY(k, rv.height(p.getX(k), p.getZ(k)) * VIS);
+  g.computeVertexNormals();
+  const n = g.attributes.normal; const col = new Float32Array(p.count * 3); const tmp = new THREE.Color();
+  const snowy = ['aras', 'murat', 'firat', 'outro'].includes(item.id);
+  for (let k = 0; k < p.count; k++) {
+    const y = p.getY(k) / VIS, slope = 1 - n.getY(k);
+    const j = vnoise(p.getX(k) * .3, p.getZ(k) * .3, 77) * .05;
+    if (y < .09 + j) tmp.copy(pal[0]);
+    else if (y < .35 + j) tmp.copy(pal[1]).lerp(pal[2], (y - .09) / .26);
+    else tmp.copy(pal[2]).lerp(pal[3], Math.min(1, (y - .35) / .4));
+    if (slope > .35) tmp.lerp(pal[3], Math.min(1, (slope - .35) * 2.5));
+    if (snowy && y > .78 + j * 2) tmp.lerp(pal[4], Math.min(1, (y - .78) * 6));
+    // field patchwork on flat lowlands
+    if (y < .16 && slope < .1) { const f = hash(Math.floor(p.getX(k) / 3), Math.floor(p.getZ(k) / 4), 5); tmp.lerp(new THREE.Color(f > .66 ? 0xa89a5a : f > .33 ? 0x5f8a3a : 0x7a7a3e), .45); }
+    tmp.multiplyScalar(.85 + .15 * Math.min(1, y * 3));
+    col.set([tmp.r, tmp.g, tmp.b], k * 3);
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const grp = new THREE.Group();
+  grp.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .95 })));
+  const wcol = new THREE.Color(Number(item.water || 0x3a7f96));
+  const wmat = new THREE.MeshPhongMaterial({ color: wcol, specular: 0xffffff, shininess: 90, map: FLOW, transparent: true, opacity: .93 });
+  const wg = new THREE.PlaneGeometry(SIZE, SIZE, 1, 1); wg.rotateX(-Math.PI / 2);
+  const water = new THREE.Mesh(wg, wmat); water.position.y = WATER_Y; grp.add(water);
+  grp.visible = false; scene.add(grp);
+  return { grp, rv, look, wmat };
+}
+const S = TL.map(buildScene);
+
+// clouds + birds
+function blobTex() { const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d'); const R = rng(5);
+  for (let i = 0; i < 26; i++) { const cx = 60 + R() * 136, cy = 100 + R() * 60, r = 25 + R() * 45; const g = x.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, 'rgba(255,255,255,.35)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 256, 256); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
+const cloudTex = blobTex(); const clouds = [];
+{ const R = rng(42); for (let i = 0; i < 18; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: cloudTex, transparent: true, depthWrite: false, opacity: .7 }));
+  s.userData = { x: (R() - .5) * 200, z: -40 - R() * 160, y: 22 + R() * 14, sc: 40 + R() * 40 }; scene.add(s); clouds.push(s); } }
+const birds = new THREE.Group(); { const R = rng(8); const m = new THREE.LineBasicMaterial({ color: 0x1a1a1a });
+  for (let i = 0; i < 7; i++) { const gb = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-.5, .15, 0), new THREE.Vector3(0, 0, 0), new THREE.Vector3(.5, .15, 0)]);
+    const l = new THREE.Line(gb, m); l.userData = { ox: (R() - .5) * 10, oy: R() * 3, oz: R() * 8, ph: R() * 6 }; birds.add(l); } }
+scene.add(birds);
+
+// ---------- 2D overlay ----------
+const out = document.getElementById('out'); const ctx = out.getContext('2d');
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const ease = t => 1 - Math.pow(1 - clamp(t), 3);
+const easeBack = t => { t = clamp(t); const c = 1.9; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+const easeIO = t => { t = clamp(t); return t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
+const fmt = n => Math.round(n).toLocaleString('tr-TR');
+const UP = s => s.toLocaleUpperCase('tr-TR');
+const BLUE = '#2EC4FF', GOLD = '#FFC83D', RED = '#E30A17';
+function font(w, s) { ctx.font = `${w} ${s}px Montserrat`; }
+function shadowText(txt, x, y, opt = {}) {
+  ctx.save(); ctx.textAlign = opt.align || 'left'; ctx.textBaseline = 'alphabetic';
+  if (opt.stroke) { ctx.lineJoin = 'round'; ctx.lineWidth = opt.stroke; ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.strokeText(txt, x, y); }
+  ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = opt.blur ?? 18; ctx.shadowOffsetY = 4;
+  ctx.fillStyle = opt.fill || '#fff'; ctx.fillText(txt, x, y); ctx.restore();
+}
+function rrect(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+
+function chunks(item) {
+  const words = item.sub.split(/\s+/); const wt = w => /\d/.test(w) ? 16 : w === 'km.' || w === 'km' ? 10 : w.length + 2;
+  const tot = words.reduce((a, w) => a + wt(w), 0); let t = item.voStart; const ws = [];
+  for (const w of words) { const d = item.voDur * wt(w) / tot; ws.push({ w, s: t, e: t + d }); t += d; }
+  const cs = []; let cur = [];
+  for (const w of ws) { if (cur.length && (cur.map(c => c.w).join(' ') + ' ' + w.w).length > 17) { cs.push(cur); cur = []; } cur.push(w); if (/[.!?,:]$/.test(w.w) && cur.map(c => c.w).join(' ').length > 6) { cs.push(cur); cur = []; } }
+  if (cur.length) cs.push(cur); return cs;
+}
+const CH = TL.map(chunks);
+window.SRT = CH.flat().map(c => ({ s: c[0].s, e: c.at(-1).e, text: c.map(w => w.w).join(' ') }));
+
+function drawSubs(t) {
+  for (const c of CH.flat()) {
+    if (t < c[0].s || t >= c.at(-1).e) continue;
+    const pop = easeBack((t - c[0].s) / .18);
+    font(900, 64); const txt = c.map(w => UP(w.w)); const sp2 = ctx.measureText(' ').width + 12;
+    const widths = txt.map(s => ctx.measureText(s).width); const total = widths.reduce((a, b) => a + b, 0) + sp2 * (txt.length - 1);
+    const fit = Math.min(1, 900 / total); const cy = 1430; ctx.save(); ctx.translate(540, cy); ctx.scale((.85 + .15 * pop) * fit, (.85 + .15 * pop) * fit); ctx.translate(-540, -cy);
+    let x = 540 - total / 2;
+    txt.forEach((s, i) => { const active = t >= c[i].s && t < c[i].e;
+      ctx.save(); if (active) { ctx.translate(x + widths[i] / 2, cy); ctx.scale(1.08, 1.08); ctx.translate(-(x + widths[i] / 2), -cy); }
+      ctx.lineJoin = 'round'; ctx.lineWidth = 14; ctx.strokeStyle = '#000'; font(900, 64); ctx.textBaseline = 'middle'; ctx.strokeText(s, x, cy);
+      ctx.fillStyle = active ? GOLD : '#fff'; ctx.fillText(s, x, cy); ctx.restore(); x += widths[i] + sp2; });
+    ctx.restore();
+  }
+}
+function drawProgress(item, lt) {
+  const a = ease(lt / .4); ctx.save(); ctx.globalAlpha = a;
+  font(800, 30); shadowText('TÜRKİYE  ·  TOP 10', 80, 190, { blur: 10 });
+  for (let k = 0; k < 10; k++) { const r = 10 - k; const x = 80 + k * 64;
+    rrect(x, 214, 52, 10, 5); ctx.fillStyle = r === item.rank ? BLUE : r > item.rank ? 'rgba(255,255,255,.95)' : 'rgba(255,255,255,.3)'; ctx.fill(); }
+  ctx.restore();
+}
+function waveIcon(x, y, s, c) { ctx.save(); ctx.strokeStyle = c; ctx.lineWidth = 4; ctx.lineCap = 'round';
+  for (let r = 0; r < 2; r++) { ctx.beginPath(); for (let i = 0; i <= 20; i++) { const u = i / 20; const px = x - s / 2 + u * s, py = y + r * 10 - 5 + Math.sin(u * Math.PI * 2) * 4; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.stroke(); } ctx.restore(); }
+function drawCard(item, lt, d) {
+  ctx.save(); ctx.globalAlpha = clamp((d - lt) / .25);
+  const p = easeBack((lt - .1) / .5);
+  ctx.save(); ctx.translate(80, 470); ctx.scale(p, p);
+  font(900, 250); const g = ctx.createLinearGradient(0, -230, 0, 0); g.addColorStop(0, '#fff'); g.addColorStop(1, item.rank === 1 ? GOLD : '#cfeeff');
+  ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 30; ctx.fillStyle = g; ctx.fillText(String(item.rank), 70, 0);
+  ctx.shadowBlur = 0; font(900, 110); ctx.fillStyle = BLUE; ctx.fillText('#', 0, -16); ctx.restore();
+  const pn = ease((lt - .3) / .45); ctx.save(); ctx.globalAlpha *= pn; ctx.translate(-60 * (1 - pn), 0);
+  font(900, item.name.length > 13 ? 80 : 88); shadowText(UP(item.name), 80, 590, { stroke: 6 }); ctx.restore();
+  const pp = ease((lt - .45) / .45); ctx.save(); ctx.globalAlpha *= pp; ctx.translate(-60 * (1 - pp), 0);
+  font(800, 32); const pw = ctx.measureText(item.place).width + 100; rrect(80, 624, pw, 66, 33); ctx.fillStyle = 'rgba(10,14,28,.62)'; ctx.fill();
+  waveIcon(122, 657, 30, BLUE); ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.fillText(item.place, 152, 658); ctx.restore();
+  const pc = easeIO((lt - .6) / 1.6); const pa = ease((lt - .55) / .3);
+  ctx.save(); ctx.globalAlpha *= pa; font(900, 120);
+  const num = fmt(item.h * pc); shadowText(num, 80, 830, { fill: GOLD, stroke: 8 });
+  const nw = ctx.measureText(num).width; font(800, 56); shadowText('km', 96 + nw, 830);
+  font(600, 28); shadowText(item.abroad ? 'TÜRKİYE SINIRLARI İÇİNDEKİ UZUNLUK' : 'UZUNLUK', 82, 878, { blur: 8, fill: 'rgba(255,255,255,.85)' });
+  ctx.restore();
+  // horizontal length bar: 0 .. 1.355 km
+  const ga = ease((lt - .6) / .4); const bx = 82, bw = 600, by = 930;
+  ctx.save(); ctx.globalAlpha *= ga;
+  rrect(bx, by, bw, 12, 6); ctx.fillStyle = 'rgba(255,255,255,.22)'; ctx.fill();
+  for (const o of TL) if (o.rank && o.rank > item.rank) { ctx.fillStyle = 'rgba(255,255,255,.65)'; ctx.fillRect(bx + bw * o.h / MAXL - 1.5, by - 8, 3, 28); }
+  const gg = ctx.createLinearGradient(bx, 0, bx + bw, 0); gg.addColorStop(0, '#1b6fd8'); gg.addColorStop(1, BLUE);
+  const wv = bw * item.h / MAXL * pc; rrect(bx, by, Math.max(12, wv), 12, 6); ctx.fillStyle = gg; ctx.fill();
+  ctx.beginPath(); ctx.arc(bx + wv, by + 6, 12, 0, 7); ctx.fillStyle = '#fff'; ctx.fill();
+  font(800, 24); shadowText('0', bx, by + 50, { blur: 6, fill: 'rgba(255,255,255,.7)' }); shadowText('1.355 km', bx + bw, by + 50, { align: 'right', blur: 6, fill: 'rgba(255,255,255,.7)' });
+  ctx.restore(); ctx.restore();
+}
+function drawIntro(lt, d) {
+  ctx.save(); ctx.globalAlpha = clamp((d - lt) / .3);
+  const l1 = ease((lt - .15) / .5), l2 = easeBack((lt - .45) / .55), l3 = easeBack((lt - .8) / .6);
+  ctx.save(); ctx.globalAlpha *= l1; font(800, 54); ctx.translate(0, 30 * (1 - l1)); shadowText('TÜRKİYE\'NİN', 540, 420, { align: 'center' }); ctx.restore();
+  ctx.save(); ctx.globalAlpha *= clamp(l2); ctx.translate(540, 540); ctx.scale(l2, l2); font(900, 130); shadowText('EN UZUN', 0, 0, { align: 'center', stroke: 8 }); ctx.restore();
+  ctx.save(); ctx.globalAlpha *= clamp(l3); ctx.translate(540, 760); ctx.scale(l3, l3);
+  font(900, 260); const g = ctx.createLinearGradient(0, -220, 0, 0); g.addColorStop(0, '#fff'); g.addColorStop(1, BLUE);
+  ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 30; ctx.fillStyle = g; ctx.textAlign = 'right'; ctx.fillText('10', 10, 0);
+  ctx.textAlign = 'left'; font(900, 120); ctx.fillStyle = '#fff'; ctx.fillText('NEHRİ', 40, -20); ctx.restore();
+  const l4 = ease((lt - 1.4) / .5); ctx.save(); ctx.globalAlpha *= l4; waveIcon(540, 835, 260 * l4, BLUE); ctx.restore();
+  ctx.restore();
+}
+function drawOutro(lt) {
+  const items = TL.filter(o => o.rank).sort((a, b) => a.rank - b.rank);
+  ctx.save(); ctx.globalAlpha = ease(lt / .4);
+  rrect(50, 230, 980, 1000, 40); ctx.fillStyle = 'rgba(8,10,24,.55)'; ctx.fill();
+  font(900, 54); shadowText('SIRALAMA', 100, 320, { blur: 10 }); ctx.fillStyle = BLUE; ctx.fillRect(100, 342, 120, 8);
+  items.forEach((o, i) => {
+    const a = easeBack((lt - .2 - i * .09) / .5); const y = 410 + i * 80; const w = 380 * o.h / MAXL * clamp(a);
+    ctx.save(); ctx.globalAlpha *= clamp(a * 1.5);
+    font(900, 36); ctx.fillStyle = o.rank === 1 ? GOLD : '#fff'; ctx.fillText(String(o.rank), 100, y + 14);
+    font(800, 32); ctx.fillStyle = '#fff'; ctx.fillText(o.name.replace(' Nehri', ''), 160, y + 12);
+    const g = ctx.createLinearGradient(470, 0, 850, 0); g.addColorStop(0, '#1b6fd8'); g.addColorStop(1, BLUE);
+    rrect(470, y - 16, Math.max(8, w), 30, 15); ctx.fillStyle = g; ctx.fill();
+    font(800, 26); ctx.fillStyle = 'rgba(255,255,255,.95)'; ctx.textAlign = 'right'; ctx.fillText(fmt(o.h) + ' km', 1000, y + 10);
+    ctx.restore(); });
+  const c = easeBack((lt - 1.4) / .5); ctx.save(); ctx.translate(540, 1270); ctx.scale(c, c); ctx.globalAlpha *= clamp(c);
+  font(900, 40); const txt = 'YORUMLARA YAZ  ↓'; const tw = ctx.measureText(txt).width + 80; rrect(-tw / 2, -40, tw, 80, 40); ctx.fillStyle = RED; ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(txt, 0, 2); ctx.restore();
+  ctx.restore();
+}
+function vignette() {
+  const g = ctx.createRadialGradient(540, 900, 500, 540, 960, 1250); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.5)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const tg = ctx.createLinearGradient(0, 0, 0, 1050); tg.addColorStop(0, 'rgba(0,0,0,.5)'); tg.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = tg; ctx.fillRect(0, 0, W, 1050);
+  const bg = ctx.createLinearGradient(0, 1250, 0, 1920); bg.addColorStop(0, 'rgba(0,0,0,0)'); bg.addColorStop(1, 'rgba(0,0,0,.5)'); ctx.fillStyle = bg; ctx.fillRect(0, 1250, W, 670);
+}
+const grain = (() => { const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d'); const id = x.createImageData(256, 256); const R = rng(3);
+  for (let i = 0; i < id.data.length; i += 4) { const v = R() * 255; id.data[i] = id.data[i + 1] = id.data[i + 2] = v; id.data[i + 3] = 14; } x.putImageData(id, 0, 0); return c; })();
+
+let lastIdx = -1;
+window.renderFrame = (t) => {
+  let idx = TL.findIndex(o => t >= o.start && t < o.start + o.dur); if (idx < 0) idx = TL.length - 1;
+  const item = TL[idx], sc = S[idx], look = sc.look; const lt = t - item.start, d = item.dur, p = lt / d;
+  if (idx !== lastIdx) { S.forEach((o, k) => o.grp.visible = k === idx); lastIdx = idx;
+    skyMat.uniforms.top.value.set(look.top); skyMat.uniforms.hor.value.set(look.hor); skyMat.uniforms.sunc.value.set(look.sun);
+    skyMat.uniforms.sdir.value.set(...look.sunDir).normalize(); skyMat.uniforms.stars.value = (item.id === 'outro' || item.id === 'intro') ? 1 : 0;
+    scene.fog.color.set(look.hor); hemi.color.set(look.top).lerp(new THREE.Color(0xffffff), .6); hemi.groundColor.set(0x3a3228); hemi.intensity = look.amb * 1.2;
+    sun.color.set(look.sun); sun.position.set(...look.sunDir).multiplyScalar(100);
+    clouds.forEach(c => c.material.color.set(look.hor).lerp(new THREE.Color(0xffffff), .55));
+  }
+  // drone flight along the river (downstream = -z)
+  const rv = sc.rv; const e = easeIO(p) * .35 + p * .65;
+  let z, hgt, side, ahead;
+  if (item.id === 'intro') { z = 70 - p * 40; hgt = 30 - p * 12; side = 0; ahead = 60; }
+  else if (item.id === 'outro') { z = 60 - p * 12; hgt = 26; side = 0; ahead = 70; }
+  else if (item.rank === 1) { z = 75 - e * 55; hgt = 3 + easeIO(p) * 24; side = 2; ahead = 26 + 30 * easeIO(p); }
+  else { z = 70 - e * 50; hgt = 9 + Math.sin(p * 2) * 3 + (idx % 3) * 2; side = (idx % 2 ? 1 : -1) * 3; ahead = 30; }
+  const whip = Math.pow(1 - clamp(lt / .45), 3); z += whip * 15; hgt += whip * 6;
+  const cx = rv.path(z) + side;
+  camera.position.set(cx, Math.max(hgt, rv.height(cx, z) * VIS + 2.5), z);
+  const az = z - ahead; camera.lookAt(rv.path(az), item.id === 'intro' || item.id === 'outro' ? 4 : 1, az);
+  camera.fov = (item.rank ? 58 : 55) + whip * 14; camera.updateProjectionMatrix();
+  camera.setViewOffset(W, H, 0, item.rank ? -H * .12 : -H * .04, W, H);
+  sc.wmat.map.offset.y = t * .35;
+  clouds.forEach(c => { const u = c.userData; c.position.set(u.x + t * .6, u.y, u.z + camera.position.z - 40); c.scale.set(u.sc, u.sc * .45, 1); c.material.opacity = item.id === 'outro' ? .25 : .6; });
+  birds.visible = !!item.rank; birds.children.forEach((b, k) => { const u = b.userData; const bz = camera.position.z - 22 - u.oz - lt * 2;
+    b.position.set(rv.path(bz) + u.ox + Math.sin(t + u.ph) * .5, hgt + 1 + u.oy, bz); b.scale.set(1, 1 + .8 * Math.sin(t * 9 + u.ph), 1); b.lookAt(camera.position); });
+  renderer.render(scene, camera);
+
+  ctx.save(); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  const zf = 1 + .04 * whip; ctx.translate(540, 960); ctx.scale(zf, zf); ctx.translate(-540, -960);
+  ctx.drawImage(glCanvas, 0, 0); ctx.restore();
+  vignette();
+  if (item.id === 'intro') drawIntro(lt, d); else if (item.id === 'outro') drawOutro(lt); else { drawProgress(item, lt); drawCard(item, lt, d); }
+  drawSubs(t);
+  ctx.save(); ctx.globalCompositeOperation = 'overlay'; ctx.translate(-((t * 997) % 256), -((t * 613) % 256)); ctx.fillStyle = ctx.createPattern(grain, 'repeat'); ctx.fillRect(0, 0, W + 256, H + 256); ctx.restore();
+  const fl = Math.max(0, 1 - lt / .22) * (idx > 0 ? 1 : 0) + Math.max(0, 1 - (d - lt) / .08) * .3;
+  if (fl > 0) { ctx.fillStyle = `rgba(255,255,255,${Math.min(.75, fl * .7)})`; ctx.fillRect(0, 0, W, H); }
+  const fade = Math.min(clamp(t / .4), clamp((TOTAL - t) / .6)); if (fade < 1) { ctx.fillStyle = `rgba(0,0,0,${1 - fade})`; ctx.fillRect(0, 0, W, H); }
+  return out.toDataURL('image/jpeg', .92);
+};
+for (const w of [600, 800, 900]) await document.fonts.load(`${w} 64px Montserrat`, 'AĞŞİÜÖÇ');
+window.TOTAL = TOTAL; window.READY = true;
+</script></body></html>
