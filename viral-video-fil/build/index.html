@@ -1,0 +1,342 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="node_modules/@fontsource/montserrat/600.css">
+<link rel="stylesheet" href="node_modules/@fontsource/montserrat/700.css">
+<link rel="stylesheet" href="node_modules/@fontsource/montserrat/800.css">
+<link rel="stylesheet" href="node_modules/@fontsource/montserrat/900.css">
+<style>html,body{margin:0;background:#000}canvas{display:block}#gl{position:absolute;left:-99999px}</style>
+<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js","three/addons/":"./node_modules/three/examples/jsm/"}}</script>
+</head><body>
+<canvas id="out" width="1080" height="1920"></canvas>
+<script type="module">
+import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+const W = 1080, H = 1920;
+const TL = await (await fetch('timeline.json')).json();
+const TOTAL = TL.at(-1).start + TL.at(-1).dur;
+const NCH = TL.filter(o => o.rank).length;
+
+// ---------- noise ----------
+function hash(x, y, s) { let h = (x * 374761393 + y * 668265263 + s * 2147483647) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967295; }
+function vnoise(x, y, s) { const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi; const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash(xi, yi, s), b = hash(xi + 1, yi, s), c = hash(xi, yi + 1, s), d = hash(xi + 1, yi + 1, s); return (a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v) * 2 - 1; }
+const fbm = (x, y, s, o = 5) => { let f = 0, a = .5, fr = 1; for (let i = 0; i < o; i++) { f += a * vnoise(x * fr, y * fr, s + i); fr *= 2.03; a *= .5; } return f; };
+const ridged = (x, y, s, o = 6) => { let f = 0, a = .5, fr = 1, w = 1; for (let i = 0; i < o; i++) { let n = 1 - Math.abs(vnoise(x * fr, y * fr, s + i)); n *= n; n *= w; w = Math.min(1, n * 2); f += a * n; fr *= 2.1; a *= .5; } return f; };
+function rng(seed) { return () => (seed = (seed * 16807) % 2147483647) / 2147483647; }
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const ease = t => 1 - Math.pow(1 - clamp(t), 3);
+const easeBack = t => { t = clamp(t); const c = 1.9; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+const easeIO = t => { t = clamp(t); return t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
+const lerp = (a, b, t) => a + (b - a) * t;
+
+// ---------- looks ----------
+const LOOK = {
+  intro:  { top: 0x050818, hor: 0x2a2850, sun: 0x9fb0ff, sunDir: [.3, .5, -.8], amb: .45, stars: 1, glow: 1, exp: 1.0 },
+  yemen:  { top: 0x1a1236, hor: 0xd9824a, sun: 0xffa86a, sunDir: [-.8, .2, -.5], amb: .55, stars: .3, glow: .6, exp: .9 },
+  march:  { top: 0x3c6aa8, hor: 0xf0c890, sun: 0xffd9a0, sunDir: [.7, .35, -.5], amb: .7, stars: 0, glow: 0, exp: 1.05 },
+  camels: { top: 0x3a72b8, hor: 0xf2dcb4, sun: 0xfff0d6, sunDir: [-.5, .6, -.6], amb: .8, stars: 0, glow: 0, exp: 1.05 },
+  quote:  { top: 0x1c1440, hor: 0xc8705a, sun: 0xffa070, sunDir: [-.9, .15, -.3], amb: .5, stars: .5, glow: 1, exp: 1.0 },
+  kneel:  { top: 0x4a76b0, hor: 0xf6d8a8, sun: 0xffe2b8, sunDir: [.4, .5, .7], amb: .75, stars: 0, glow: .3, exp: 1.05 },
+  birds:  { top: 0x2a1410, hor: 0xc0542a, sun: 0xff7a3a, sunDir: [-.3, .25, -.9], amb: .45, stars: 0, glow: .5, exp: 1.0 },
+  sura:   { top: 0x2c3c78, hor: 0xffc79a, sun: 0xffe6c8, sunDir: [.8, .2, -.5], amb: .65, stars: .2, glow: .6, exp: 1.05 },
+  outro:  { top: 0x04060f, hor: 0x2a2448, sun: 0xaab8ff, sunDir: [.3, .5, -.8], amb: .4, stars: 1, glow: 1, exp: 1.0 },
+};
+
+// ---------- three ----------
+const glCanvas = document.createElement('canvas'); glCanvas.id = 'gl'; document.body.appendChild(glCanvas);
+const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); renderer.setSize(W, H, false);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, W / H, 0.2, 1000);
+const hemi = new THREE.HemisphereLight(0xffffff, 0x3a2a1e, .8); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffffff, 3); scene.add(sun);
+scene.fog = new THREE.Fog(0xffffff, 60, 300);
+const skyMat = new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false,
+  uniforms: { top: { value: new THREE.Color() }, hor: { value: new THREE.Color() }, sunc: { value: new THREE.Color() }, sdir: { value: new THREE.Vector3() }, stars: { value: 0 } },
+  vertexShader: `varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+  fragmentShader: `uniform vec3 top,hor,sunc,sdir; uniform float stars; varying vec3 vP;
+   float h(vec3 p){return fract(sin(dot(p,vec3(12.9898,78.233,45.164)))*43758.5453);}
+   void main(){ float y=max(vP.y,0.); vec3 c=mix(hor,top,pow(y,.5));
+     float s=max(dot(vP,normalize(sdir)),0.); c+=sunc*(pow(s,700.)*3.+pow(s,10.)*.3);
+     vec3 q=floor(vP*500.); float st=step(.997,h(q))*smoothstep(.03,.4,y)*stars*(.6+.4*h(q+1.)); c+=vec3(st);
+     gl_FragColor=vec4(c,1.); }` });
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(700, 48, 24), skyMat));
+
+// terrain: Mecca valley, Kaaba at origin, approach corridor towards +z
+const pathX = z => 6 * Math.sin(z * .025);
+function height(x, z) {
+  const r = Math.hypot(x, z * .9); const dc = z > -5 ? Math.abs(x - pathX(z)) : 1e9;
+  const vd = Math.min(Math.max(0, r - 10), Math.max(0, dc - 8));
+  const hills = (ridged(x * .022 + 3, z * .022, 7) * 1.1 + .1) * 26 * smooth(6, 40, vd);
+  return hills + fbm(x * .05, z * .05, 3) * .6 * (1 - smooth(0, 30, vd) * .5) + .3 * Math.sin(x * .3 + z * .12) * (1 - smooth(0, 10, vd));
+}
+{
+  const SIZE = 420, SEG = 340; const g = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG); g.rotateX(-Math.PI / 2); g.translate(0, 0, 60);
+  const p = g.attributes.position; for (let k = 0; k < p.count; k++) p.setY(k, height(p.getX(k), p.getZ(k)));
+  g.computeVertexNormals(); const n = g.attributes.normal; const col = new Float32Array(p.count * 3); const c = new THREE.Color();
+  const sand = new THREE.Color(0xd8ae74), sand2 = new THREE.Color(0xc4935c), rock = new THREE.Color(0x8a6248), dark = new THREE.Color(0x4e3a2e);
+  for (let k = 0; k < p.count; k++) { const y = p.getY(k), sl = 1 - n.getY(k); const j = vnoise(p.getX(k) * .2, p.getZ(k) * .2, 9);
+    c.copy(sand).lerp(sand2, .5 + .5 * j); if (y > 2 + j) c.lerp(rock, Math.min(1, (y - 2) / 8)); if (sl > .3) c.lerp(dark, Math.min(1, (sl - .3) * 2.2));
+    col.set([c.r, c.g, c.b], k * 3); }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  scene.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 })));
+}
+// Kaaba
+const kaaba = new THREE.Group(); {
+  const blk = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: .55 }); const gold = new THREE.MeshStandardMaterial({ color: 0xd4a53a, metalness: .8, roughness: .3, emissive: 0x3a2808 });
+  const b = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.1, 2.3), blk); b.position.y = 1.55; kaaba.add(b);
+  const band = new THREE.Mesh(new THREE.BoxGeometry(2.64, .24, 2.34), gold); band.position.y = 2.45; kaaba.add(band);
+  const door = new THREE.Mesh(new THREE.BoxGeometry(.6, 1.1, .05), gold); door.position.set(.6, 1.45, 1.17); kaaba.add(door);
+  const plaza = new THREE.Mesh(new THREE.CylinderGeometry(7, 7.4, .3, 48), new THREE.MeshStandardMaterial({ color: 0xcdb898, roughness: .9 })); plaza.position.y = .05; kaaba.add(plaza);
+  kaaba.position.y = height(0, 0) * 0 + .2; scene.add(kaaba);
+}
+function glowTex(r, g, b) { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); const gr = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, `rgba(${r},${g},${b},1)`); gr.addColorStop(.3, `rgba(${r},${g},${b},.35)`); gr.addColorStop(1, `rgba(${r},${g},${b},0)`); x.fillStyle = gr; x.fillRect(0, 0, 128, 128); return new THREE.CanvasTexture(c); }
+const kGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(255, 200, 120), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+kGlow.position.set(0, 2.5, -1); kGlow.scale.set(16, 16, 1); scene.add(kGlow);
+const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(235, 240, 255), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, fog: false }));
+moon.scale.set(60, 60, 1); scene.add(moon);
+
+// Elephant
+const ele = new THREE.Group(); const legs = []; {
+  const m = new THREE.MeshStandardMaterial({ color: 0x77706a, roughness: .92 });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 20), m); body.scale.set(1.15, 1.05, 1.7); body.position.y = 2.5; ele.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(.8, 24, 16), m); head.position.set(0, 3.0, -1.75); ele.add(head);
+  for (const s of [-1, 1]) { const ear = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 12), m); ear.scale.set(.1, .75, .62); ear.position.set(s * .78, 2.95, -1.4); ear.rotation.y = s * .35; ele.add(ear);
+    const tusk = new THREE.Mesh(new THREE.ConeGeometry(.08, .9, 10), new THREE.MeshStandardMaterial({ color: 0xf2ead8, roughness: .4 })); tusk.position.set(s * .32, 2.35, -2.35); tusk.rotation.x = -1.9; ele.add(tusk); }
+  const curve = new THREE.CatmullRomCurve3([new THREE.Vector3(0, 2.8, -2.35), new THREE.Vector3(0, 2.1, -2.75), new THREE.Vector3(0, 1.2, -2.7), new THREE.Vector3(0, .55, -2.45), new THREE.Vector3(0, .35, -2.65)]);
+  ele.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 30, .17, 10), m));
+  for (const [x, z] of [[-.6, -.95], [.6, -.95], [-.6, .95], [.6, .95]]) { const pv = new THREE.Group(); pv.position.set(x, 2.0, z);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(.34, .38, 2.0, 14), m); leg.position.y = -1.0; pv.add(leg); ele.add(pv); legs.push(pv); }
+  const howdah = new THREE.Mesh(new THREE.BoxGeometry(1.3, .6, 1.4), new THREE.MeshStandardMaterial({ color: 0x8e1a1a, roughness: .7 })); howdah.position.y = 3.75; ele.add(howdah);
+  const cloth = new THREE.Mesh(new THREE.BoxGeometry(2.45, 1.1, 1.6), new THREE.MeshStandardMaterial({ color: 0xa8231f, roughness: .8 })); cloth.position.y = 3.05; ele.add(cloth);
+  const trim = new THREE.Mesh(new THREE.BoxGeometry(2.5, .12, 1.65), new THREE.MeshStandardMaterial({ color: 0xd4a53a, metalness: .7, roughness: .3 })); trim.position.y = 2.52; ele.add(trim);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(.95, .7, 4), new THREE.MeshStandardMaterial({ color: 0xd4a53a, metalness: .7, roughness: .35 })); roof.position.y = 4.4; roof.rotation.y = Math.PI / 4; ele.add(roof);
+  ele.scale.setScalar(1.15); scene.add(ele);
+}
+// Army: torches + spears in a column behind the elephant (no human figures)
+const ROWS = 34, COLS = 9, NA = ROWS * COLS; const R0 = rng(4); const army = [];
+for (let i = 0; i < NA; i++) army.push({ r: Math.floor(i / COLS), c: i % COLS, jx: (R0() - .5) * .8, jz: (R0() - .5) * .8, ph: R0() * 6, out: 2.5 + R0() * 3.5, torch: R0() < .4 });
+const spearG = mergeGeometries([new THREE.CylinderGeometry(.03, .03, 3.2, 5).translate(0, 1.6, 0), new THREE.ConeGeometry(.08, .35, 6).translate(0, 3.35, 0), new THREE.CylinderGeometry(.35, .35, .08, 10).rotateX(Math.PI / 2).translate(0, 1.3, -.1)]);
+const spears = new THREE.InstancedMesh(spearG, new THREE.MeshStandardMaterial({ color: 0x5a4a3a, metalness: .5, roughness: .5 }), NA); scene.add(spears);
+const torchMat = new THREE.SpriteMaterial({ map: glowTex(255, 150, 60), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false });
+const torches = army.map(a => { if (!a.torch) return null; const s = new THREE.Sprite(torchMat); s.scale.set(1.2, 1.6, 1); scene.add(s); return s; });
+const banners = []; for (let i = 0; i < 8; i++) { const g = new THREE.Group(); const pole = new THREE.Mesh(new THREE.CylinderGeometry(.05, .05, 5.5, 6), new THREE.MeshStandardMaterial({ color: 0x3a2a1a })); pole.position.y = 2.75; g.add(pole);
+  const fg = new THREE.PlaneGeometry(1.6, 1, 8, 1); const flag = new THREE.Mesh(fg, new THREE.MeshStandardMaterial({ color: i % 2 ? 0x9a1c1c : 0xc8a040, side: THREE.DoubleSide })); flag.position.set(.8, 4.9, 0); g.add(flag); g.userData.flag = flag; scene.add(g); banners.push(g); }
+const dustTex = glowTex(200, 160, 110); const dust = []; for (let i = 0; i < 26; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: dustTex, transparent: true, depthWrite: false, opacity: .25 })); scene.add(s); dust.push(s); }
+const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpS = new THREE.Vector3(), tmpP = new THREE.Vector3(), tmpE = new THREE.Euler();
+function placeArmy(headZ, t, walking, outT) {
+  for (let i = 0; i < NA; i++) { const a = army[i]; const z = headZ + 5 + a.r * 1.7 + a.jz; const x = pathX(z) + (a.c - (COLS - 1) / 2) * 1.5 + a.jx;
+    let y = height(x, z) + (walking ? Math.abs(Math.sin(t * 5 + a.ph)) * .12 : 0);
+    const gone = outT != null && outT > a.out; const sc = gone ? 0 : 1;
+    tmpE.set(gone ? 0 : Math.sin(t * 5 + a.ph) * .05, 0, 0); tmpQ.setFromEuler(tmpE); tmpS.setScalar(sc); tmpP.set(x, y, z); tmpM.compose(tmpP, tmpQ, tmpS); spears.setMatrixAt(i, tmpM);
+    const tr = torches[i]; if (tr) { tr.visible = !gone; tr.position.set(x + .35, y + 2.2, z); const f = .85 + .15 * Math.sin(t * 17 + a.ph * 3); tr.scale.set(1.1 * f, 1.5 * f, 1); } }
+  spears.instanceMatrix.needsUpdate = true;
+  banners.forEach((b, k) => { const z = headZ + 7 + k * 7; const x = pathX(z) + (k % 2 ? 6.5 : -6.5); b.position.set(x, height(x, z), z); b.visible = !(outT != null && outT > 2.6 + k * .4);
+    const fl = b.userData.flag.geometry.attributes.position; for (let v = 0; v < fl.count; v++) { const u = (fl.getX(v) + .8) / 1.6; fl.setZ(v, Math.sin(t * 6 - u * 4 + k) * .2 * u); } fl.needsUpdate = true; });
+  dust.forEach((d, k) => { const z = headZ + 4 + (k / dust.length) * ROWS * 1.7; const x = pathX(z) + Math.sin(k * 7.1) * 6; d.position.set(x + Math.sin(t * .5 + k) * 1.5, 1.5 + (k % 3), z); d.scale.set(10, 5, 1); });
+}
+function setArmyVisible(v) { spears.visible = v; torches.forEach(t => t && (t.visible = v)); banners.forEach(b => b.visible = v); dust.forEach(d => d.visible = v); }
+
+// Camels (instanced)
+const camelG = (() => { const neck = new THREE.CatmullRomCurve3([new THREE.Vector3(0, 1.75, -.7), new THREE.Vector3(0, 1.75, -1.15), new THREE.Vector3(0, 2.25, -1.35), new THREE.Vector3(0, 2.75, -1.4)]);
+  const parts = [new THREE.CapsuleGeometry(.36, .95, 6, 12).rotateX(Math.PI / 2).translate(0, 1.7, 0), new THREE.SphereGeometry(.34, 14, 10).scale(1, .85, 1.35).translate(0, 2.0, .05),
+    new THREE.TubeGeometry(neck, 12, .12, 8).toNonIndexed(), new THREE.CapsuleGeometry(.11, .38, 4, 8).rotateX(Math.PI / 2 - .3).translate(0, 2.78, -1.6),
+    new THREE.CylinderGeometry(.03, .02, .5, 4).rotateX(-.4).translate(0, 1.55, .85)];
+  for (const [x, z] of [[-.2, -.55], [.2, -.55], [-.2, .55], [.2, .55]]) parts.push(new THREE.CylinderGeometry(.075, .055, 1.55, 6).translate(x, .78, z));
+  return mergeGeometries(parts.map(g => g.index ? g.toNonIndexed() : g)); })();
+const NC = 40; const camels = new THREE.InstancedMesh(camelG, new THREE.MeshStandardMaterial({ color: 0xb98a58, roughness: .95 }), NC); const camelD = []; { const R = rng(21);
+  for (let i = 0; i < NC; i++) { const z = 36 + R() * 26, x = pathX(z) + (R() - .5) * 26; camelD.push({ x: x * 1.4, z, ry: R() * 6.28, ph: R() * 6 }); } }
+scene.add(camels);
+function placeCamels(t) { camelD.forEach((c, i) => { tmpE.set(0, c.ry + Math.sin(t * .3 + c.ph) * .1, 0); tmpQ.setFromEuler(tmpE); tmpS.setScalar(1.3); tmpP.set(c.x, height(c.x, c.z), c.z); tmpM.compose(tmpP, tmpQ, tmpS); camels.setMatrixAt(i, tmpM); }); camels.instanceMatrix.needsUpdate = true; }
+placeCamels(0);
+
+// Birds + stones
+const NB = 900; const birdG = new THREE.BufferGeometry(); birdG.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, -.2, -.7, .2, .15, 0, 0, .15, 0, 0, -.2, 0, 0, .15, .7, .2, .15], 3)); birdG.computeVertexNormals();
+const birds = new THREE.InstancedMesh(birdG, new THREE.MeshBasicMaterial({ color: 0x120c08, side: THREE.DoubleSide }), NB); scene.add(birds);
+const BD = []; { const R = rng(33); for (let i = 0; i < NB; i++) BD.push({ ox: (R() - .5) * 46, oy: (R() - .5) * 10, oz: (R() - .5) * 46, ph: R() * 6.28, f: .5 + R(), sp: 8 + R() * 4 }); }
+const flockC = lt => { const a = easeIO(lt / 3.2); return new THREE.Vector3(0, lerp(28, 15, a), lerp(-90, 62, a)); };
+function birdPos(i, lt, out) { const b = BD[i]; const c = flockC(lt - (i % 7) * .05); out.set(c.x + b.ox + Math.sin(lt * b.f + b.ph) * 3, c.y + b.oy + Math.sin(lt * 1.3 * b.f + b.ph) * 1.5, c.z + b.oz + Math.cos(lt * b.f + b.ph) * 3); return out; }
+function placeBirds(lt) { for (let i = 0; i < NB; i++) { birdPos(i, lt, tmpP); const flap = Math.sin(lt * BD[i].sp + BD[i].ph); tmpE.set(0, Math.sin(lt + BD[i].ph) * .4, 0); tmpQ.setFromEuler(tmpE);
+    tmpS.set(1.1, flap * 1.2, 1.1); tmpM.compose(tmpP, tmpQ, tmpS); birds.setMatrixAt(i, tmpM); } birds.instanceMatrix.needsUpdate = true; }
+const NS = 220; const stoneG = new THREE.BufferGeometry(); const stoneP = new Float32Array(NS * 6); stoneG.setAttribute('position', new THREE.BufferAttribute(stoneP, 3));
+const stones = new THREE.LineSegments(stoneG, new THREE.LineBasicMaterial({ color: 0xffa040, transparent: true, opacity: .95, blending: THREE.AdditiveBlending, fog: false })); scene.add(stones);
+const SD = []; { const R = rng(55); for (let i = 0; i < NS; i++) SD.push({ b: Math.floor(R() * NB), t0: 2.3 + R() * 3.6, tx: (R() - .5) * 16, tz: 40 + R() * 56 }); }
+const puffs = []; for (let i = 0; i < 40; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: dustTex, transparent: true, depthWrite: false, opacity: 0 })); scene.add(s); puffs.push(s); }
+const vA = new THREE.Vector3();
+function placeStones(lt) { const DUR = .7; let pi = 0; puffs.forEach(p => p.material.opacity = 0);
+  for (let i = 0; i < NS; i++) { const s = SD[i]; const u = (lt - s.t0) / DUR; const o = i * 6;
+    if (u < 0 || u > 1) { stoneP.fill(0, o, o + 6); stoneP[o + 1] = stoneP[o + 4] = -999;
+      if (u > 1 && u < 1.8 && pi < puffs.length) { const p = puffs[pi++]; const x = pathX(s.tz) + s.tx; p.position.set(x, height(x, s.tz) + 1, s.tz); const k = (u - 1) / .8; p.scale.setScalar(2 + k * 5); p.material.opacity = .5 * (1 - k); }
+      continue; }
+    birdPos(s.b, s.t0, vA); const x1 = pathX(s.tz) + s.tx, y1 = height(x1, s.tz);
+    const x = lerp(vA.x, x1, u), y = lerp(vA.y, y1, u * u), z = lerp(vA.z, s.tz, u); const u2 = Math.max(0, u - .045);
+    stoneP.set([x, y, z, lerp(vA.x, x1, u2), lerp(vA.y, y1, u2 * u2) , lerp(vA.z, s.tz, u2)], o); }
+  stoneG.attributes.position.needsUpdate = true; }
+
+// ---------- 2D ----------
+const out = document.getElementById('out'); const ctx = out.getContext('2d');
+const GOLD = '#E8B44A', CREAM = '#FFF4DC', RED = '#B3261E';
+const UP = s => s.toLocaleUpperCase('tr-TR');
+function font(w, s) { ctx.font = `${w} ${s}px Montserrat`; }
+function shadowText(txt, x, y, opt = {}) { ctx.save(); ctx.textAlign = opt.align || 'left'; ctx.textBaseline = opt.base || 'alphabetic';
+  if (opt.stroke) { ctx.lineJoin = 'round'; ctx.lineWidth = opt.stroke; ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.strokeText(txt, x, y); }
+  ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = opt.blur ?? 18; ctx.shadowOffsetY = 4; ctx.fillStyle = opt.fill || '#fff'; ctx.fillText(txt, x, y); ctx.restore(); }
+function rrect(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+function wrap(text, maxW) { const ws = text.split(' '); const lines = []; let cur = ''; for (const w of ws) { const t = cur ? cur + ' ' + w : w; if (ctx.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t; } if (cur) lines.push(cur); return lines; }
+
+function chunks(item) { const words = item.sub.split(/\s+/); const wt = w => /\d/.test(w) ? 12 : w.length + 2;
+  const tot = words.reduce((a, w) => a + wt(w), 0); let t = item.voStart; const ws = [];
+  for (const w of words) { const d = item.voDur * wt(w) / tot; ws.push({ w, s: t, e: t + d }); t += d; }
+  const cs = []; let cur = [];
+  for (const w of ws) { if (cur.length && (cur.map(c => c.w).join(' ') + ' ' + w.w).length > 17) { cs.push(cur); cur = []; } cur.push(w); if (/[.!?,:"]$/.test(w.w) && cur.map(c => c.w).join(' ').length > 6) { cs.push(cur); cur = []; } }
+  if (cur.length) cs.push(cur); return cs; }
+const CH = TL.map(chunks);
+window.SRT = CH.flat().map(c => ({ s: c[0].s, e: c.at(-1).e, text: c.map(w => w.w).join(' ') }));
+function drawSubs(t) { for (const c of CH.flat()) { if (t < c[0].s || t >= c.at(-1).e) continue;
+    const pop = easeBack((t - c[0].s) / .18); font(900, 62); const txt = c.map(w => UP(w.w.replace(/"/g, ''))); const sp2 = ctx.measureText(' ').width + 12;
+    const widths = txt.map(s => ctx.measureText(s).width); const total = widths.reduce((a, b) => a + b, 0) + sp2 * (txt.length - 1);
+    const fit = Math.min(1, 900 / total); const cy = 1440; ctx.save(); ctx.translate(540, cy); ctx.scale((.85 + .15 * pop) * fit, (.85 + .15 * pop) * fit); ctx.translate(-540, -cy);
+    let x = 540 - total / 2; txt.forEach((s, i) => { const active = t >= c[i].s && t < c[i].e;
+      ctx.save(); if (active) { ctx.translate(x + widths[i] / 2, cy); ctx.scale(1.08, 1.08); ctx.translate(-(x + widths[i] / 2), -cy); }
+      ctx.lineJoin = 'round'; ctx.lineWidth = 14; ctx.strokeStyle = '#000'; font(900, 62); ctx.textBaseline = 'middle'; ctx.strokeText(s, x, cy);
+      ctx.fillStyle = active ? GOLD : '#fff'; ctx.fillText(s, x, cy); ctx.restore(); x += widths[i] + sp2; }); ctx.restore(); } }
+function drawChapter(item, lt, d) { const a = ease(lt / .4) * clamp((d - lt) / .25); ctx.save(); ctx.globalAlpha = a;
+  font(800, 28); shadowText(`FİL VAKASI  ·  BÖLÜM ${item.rank}/${NCH}`, 80, 180, { blur: 10, fill: 'rgba(255,255,255,.85)' });
+  for (let k = 0; k < NCH; k++) { rrect(80 + k * 74, 202, 62, 10, 5); ctx.fillStyle = k + 1 === item.rank ? GOLD : k + 1 < item.rank ? 'rgba(255,255,255,.95)' : 'rgba(255,255,255,.3)'; ctx.fill(); }
+  const pn = ease((lt - .15) / .45); ctx.save(); ctx.globalAlpha *= pn; ctx.translate(-50 * (1 - pn), 0); font(900, 64); shadowText(UP(item.chapter), 80, 300, { stroke: 6 }); ctx.restore();
+  ctx.restore(); }
+function tag(text, x, y, a) { ctx.save(); ctx.globalAlpha *= a; font(800, 26); const w = ctx.measureText(text).width + 40; rrect(x, y, w, 48, 24); ctx.fillStyle = 'rgba(10,8,6,.6)'; ctx.fill();
+  ctx.strokeStyle = 'rgba(232,180,74,.7)'; ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = CREAM; ctx.textBaseline = 'middle'; ctx.fillText(text, x + 20, y + 25); ctx.restore(); }
+
+function drawIntro(lt, d) { ctx.save(); ctx.globalAlpha = clamp((d - lt) / .3); ctx.textAlign = 'center';
+  const a1 = easeBack((lt - .3) / .6), a2 = ease((lt - 1.0) / .5), a3 = ease((lt - 1.6) / .5);
+  ctx.save(); ctx.globalAlpha *= clamp(a1); ctx.translate(540, 560); ctx.scale(a1, a1); font(900, 170);
+  const g = ctx.createLinearGradient(0, -150, 0, 20); g.addColorStop(0, '#fff'); g.addColorStop(1, GOLD); ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 34; ctx.fillStyle = g; ctx.fillText('FİL', 0, -40);
+  font(900, 150); ctx.fillText('VAKASI', 0, 120); ctx.restore();
+  ctx.save(); ctx.globalAlpha *= a2; ctx.fillStyle = GOLD; ctx.fillRect(540 - 180 * a2, 720, 360 * a2, 6); font(800, 40); shadowText('MS 570 civarı  ·  Mekke', 540, 790, { align: 'center' }); ctx.restore();
+  ctx.save(); ctx.globalAlpha *= a3 * .9; font(600, 26); shadowText('İslami kaynaklara ve rivayetlere göre', 540, 845, { align: 'center', fill: 'rgba(255,255,255,.8)', blur: 8 }); ctx.restore();
+  ctx.restore(); }
+
+// stylised map
+const PEN = [[35, 29.5], [36.5, 26], [38, 24], [39, 22], [39.6, 21], [40.6, 19.5], [42, 17], [42.8, 15], [43.3, 13.2], [43.6, 12.7], [45, 12.9], [48, 14], [52, 15.6], [55, 17.2], [57, 18.9], [59, 20.6], [59.8, 22.5], [58.6, 23.6], [57, 24], [56.3, 26.3], [55, 25.3], [53, 24.2], [51.5, 24.5], [51.2, 26], [50, 26.6], [49.4, 27.6], [48.5, 28.6], [47.9, 29.6], [48.3, 30.2], [47, 31.5], [42, 33], [39, 32.5], [36.5, 31], [35, 29.5]];
+const AFR = [[30, 31.5], [32.5, 30], [34, 27.5], [35.5, 24], [37.2, 21], [38.3, 18], [39.5, 15.5], [41, 14.2], [42.4, 12.8], [43.3, 11.6], [44.5, 10.5], [47, 11.2], [51, 11.8], [51, 8], [30, 8]];
+function drawMap(lt, d) { const a = ease((lt - .2) / .5) * clamp((d - lt) / .3); if (a <= 0) return;
+  const X0 = 90, Y0 = 380, MW = 900, MH = 840; const pj = ([lo, la]) => [X0 + (lo - 31) / (62 - 31) * MW, Y0 + (34 - la) / (34 - 9) * MH];
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(540, 800); const s = .92 + .08 * ease((lt - .2) / .6); ctx.scale(s, s); ctx.translate(-540, -800);
+  rrect(X0, Y0, MW, MH, 36); ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 40; ctx.fillStyle = '#163a52'; ctx.fill(); ctx.restore();
+  ctx.save(); rrect(X0, Y0, MW, MH, 36); ctx.clip();
+  for (const [poly, col] of [[AFR, '#6e5a40'], [PEN, '#c9a46a']]) { ctx.beginPath(); poly.forEach((p, i) => { const [x, y] = pj(p); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); ctx.fillStyle = col; ctx.fill(); ctx.strokeStyle = 'rgba(255,240,210,.5)'; ctx.lineWidth = 2; ctx.stroke(); }
+  font(700, 24); ctx.fillStyle = 'rgba(200,230,255,.6)'; ctx.save(); const [rx, ry] = pj([38.4, 20.3]); ctx.translate(rx, ry); ctx.rotate(1.05); ctx.textAlign = 'center'; ctx.fillText('KIZILDENİZ', 0, 0); ctx.restore();
+  ctx.restore();
+  const [hx, hy] = pj([36.2, 11.2]); font(900, 34); shadowText('HABEŞİSTAN', hx, hy, { align: 'center', fill: CREAM, blur: 8 });
+  const S_ = pj([44.2, 15.35]), M_ = pj([39.83, 21.42]);
+  const ra = clamp((lt - 1.6) / 3.2); ctx.save(); ctx.setLineDash([14, 12]); ctx.lineDashOffset = -lt * 40; ctx.strokeStyle = GOLD; ctx.lineWidth = 6; ctx.beginPath();
+  const cpx = (S_[0] + M_[0]) / 2 + 60, cpy = (S_[1] + M_[1]) / 2 + 10; for (let i = 0; i <= 40 * ra; i++) { const u = i / 40; const x = (1 - u) ** 2 * S_[0] + 2 * (1 - u) * u * cpx + u * u * M_[0], y = (1 - u) ** 2 * S_[1] + 2 * (1 - u) * u * cpy + u * u * M_[1]; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+  ctx.stroke(); ctx.restore();
+  for (const [p, label, dx, col, t0] of [[S_, "SAN'A", 26, '#fff', .5], [M_, 'MEKKE', 26, GOLD, 1.0]]) { const pa = easeBack((lt - t0) / .4); ctx.save(); ctx.globalAlpha *= clamp(pa);
+    const pulse = (lt * 1.2) % 1; ctx.strokeStyle = `rgba(255,220,140,${1 - pulse})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p[0], p[1], 12 + pulse * 30, 0, 7); ctx.stroke();
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(p[0], p[1], 11 * pa, 0, 7); ctx.fill(); font(900, 38); shadowText(label, p[0] + dx, p[1] + 12, { fill: col, stroke: 6, blur: 6 }); ctx.restore(); }
+  const ea = ease((lt - 2.4) / .5); ctx.save(); ctx.globalAlpha *= ea; font(800, 28); const tw = ctx.measureText('Vali: EBREHE').width + 40; rrect(S_[0] + 20, S_[1] + 40, tw, 50, 25); ctx.fillStyle = 'rgba(20,12,8,.75)'; ctx.fill();
+  ctx.fillStyle = CREAM; ctx.textBaseline = 'middle'; ctx.fillText('Vali: EBREHE', S_[0] + 40, S_[1] + 66); ctx.restore();
+  ctx.restore(); }
+
+function drawCamels(item, lt) { const pc = easeIO((lt - 3.0) / 1.4); const a = ease((lt - 2.8) / .4) * clamp((item.dur - lt) / .3); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; font(900, 170); const n = String(Math.round(200 * pc)); shadowText(n, 80, 520, { fill: GOLD, stroke: 8 }); const w = ctx.measureText(n).width;
+  font(900, 70); shadowText('DEVE', 100 + w, 510, { stroke: 6 }); font(600, 30); shadowText('Abdülmuttalib\'in develeri', 84, 572, { fill: 'rgba(255,255,255,.85)', blur: 8 }); ctx.restore(); }
+
+function drawQuote(item, lt) { const q0 = item.voStart - item.start + item.voDur * .48; const a = ease((lt - q0 + .3) / .5) * clamp((item.dur - lt) / .3); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; const y0 = 400; rrect(70, y0, 940, 560, 40); ctx.fillStyle = 'rgba(12,8,6,.62)'; ctx.fill(); ctx.strokeStyle = 'rgba(232,180,74,.6)'; ctx.lineWidth = 3; ctx.stroke();
+  font(900, 200); ctx.fillStyle = GOLD; ctx.fillText('“', 100, y0 + 190);
+  const lines = [['BEN DEVELERİN', 0], ['SAHİBİYİM.', 0], ['KÂBE\'NİN DE BİR', .45], ['SAHİBİ VAR,', .45], ['ONU O KORUR.', .8]];
+  lines.forEach(([s, f], i) => { const t0 = q0 + f * item.voDur * .5; const la = ease((lt - t0) / .4); ctx.save(); ctx.globalAlpha *= la; ctx.translate(30 * (1 - la), 0);
+    font(900, i === 4 ? 70 : 60); shadowText(s, 130, y0 + 210 + i * 66 + (i === 4 ? 12 : 0), { fill: i === 4 ? GOLD : '#fff', blur: 10 }); ctx.restore(); });
+  font(600, 28); shadowText('— Abdülmuttalib (rivayet)', 130, y0 + 520, { fill: 'rgba(255,255,255,.75)', blur: 6 });
+  ctx.restore(); }
+
+const MEAL = ['Rabbinin fil sahiplerine ne yaptığını görmedin mi?', 'Onların tuzaklarını boşa çıkarmadı mı?', 'Üzerlerine sürü sürü kuşlar gönderdi.', 'Onlara pişmiş çamurdan taşlar atıyorlardı.', 'Sonunda onları yenmiş ekin yaprağı gibi yaptı.'];
+function drawSura(item, lt) { const a = ease((lt - .6) / .5) * clamp((item.dur - lt) / .3); if (a <= 0) return;
+  ctx.save(); ctx.globalAlpha = a; const y0 = 360; rrect(60, y0, 960, 760, 40); ctx.fillStyle = 'rgba(12,10,20,.6)'; ctx.fill(); ctx.strokeStyle = 'rgba(232,180,74,.6)'; ctx.lineWidth = 3; ctx.stroke();
+  font(900, 46); shadowText('FİL SURESİ', 100, y0 + 80, { fill: GOLD, blur: 8 }); font(700, 28); shadowText('105. sure · Türkçe meali', 100, y0 + 124, { fill: 'rgba(255,255,255,.75)', blur: 6 });
+  let y = y0 + 200; MEAL.forEach((m, i) => { const la = ease((lt - 1.0 - i * .7) / .45); font(700, 34); const ls = wrap(m, 800);
+    ctx.save(); ctx.globalAlpha *= la; ctx.translate(24 * (1 - la), 0); font(900, 34); ctx.fillStyle = GOLD; ctx.fillText(String(i + 1), 100, y); font(700, 34);
+    ls.forEach((l, k) => shadowText(l, 150, y + k * 44, { blur: 6 })); ctx.restore(); y += ls.length * 44 + 26; });
+  ctx.restore(); }
+
+function drawOutro(lt) { ctx.save(); ctx.globalAlpha = ease(lt / .4);
+  const y0 = 330; rrect(60, y0, 960, 760, 40); ctx.fillStyle = 'rgba(8,8,16,.6)'; ctx.fill();
+  font(900, 54); shadowText('ÖZETLE', 110, y0 + 90, { blur: 10 }); ctx.fillStyle = GOLD; ctx.fillRect(110, y0 + 112, 120, 8);
+  const rows = [['NE ZAMAN?', 'MS 570 civarı · Fil Yılı'], ['KİM?', 'Ebrehe · Habeş\'in Yemen valisi'], ['NEREDE?', 'Mekke · Kâbe'], ['NE OLDU?', 'Ordu Mekke\'ye giremeden dağıldı'], ['KAYNAK', 'Fil Suresi (105) · siyer kaynakları']];
+  rows.forEach(([k, v], i) => { const a = ease((lt - .2 - i * .12) / .4); ctx.save(); ctx.globalAlpha *= a; ctx.translate(30 * (1 - a), 0); const y = y0 + 200 + i * 108;
+    font(800, 26); ctx.fillStyle = GOLD; ctx.fillText(k, 110, y); font(800, 36); ctx.fillStyle = '#fff'; ctx.fillText(v, 110, y + 46); ctx.restore(); });
+  const c = easeBack((lt - 1.2) / .5); ctx.save(); ctx.translate(540, 1180); ctx.scale(c, c); ctx.globalAlpha *= clamp(c);
+  font(900, 40); const txt = 'YORUMLARA YAZ  ↓'; const tw = ctx.measureText(txt).width + 80; rrect(-tw / 2, -40, tw, 80, 40); ctx.fillStyle = RED; ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(txt, 0, 2); ctx.restore(); ctx.restore(); }
+
+function vignette() { const g = ctx.createRadialGradient(540, 900, 450, 540, 960, 1250); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.6)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  const tg = ctx.createLinearGradient(0, 0, 0, 900); tg.addColorStop(0, 'rgba(0,0,0,.5)'); tg.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = tg; ctx.fillRect(0, 0, W, 900);
+  const bg = ctx.createLinearGradient(0, 1250, 0, 1920); bg.addColorStop(0, 'rgba(0,0,0,0)'); bg.addColorStop(1, 'rgba(0,0,0,.55)'); ctx.fillStyle = bg; ctx.fillRect(0, 1250, W, 670); }
+const grain = (() => { const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d'); const id = x.createImageData(256, 256); const R = rng(3);
+  for (let i = 0; i < id.data.length; i += 4) { const v = R() * 255; id.data[i] = id.data[i + 1] = id.data[i + 2] = v; id.data[i + 3] = 16; } x.putImageData(id, 0, 0); return c; })();
+
+// ---------- frame ----------
+let lastIdx = -1;
+window.renderFrame = (t) => {
+  let idx = TL.findIndex(o => t >= o.start && t < o.start + o.dur); if (idx < 0) idx = TL.length - 1;
+  const item = TL[idx], id = item.id, L = LOOK[id]; const lt = t - item.start, d = item.dur, p = lt / d;
+  if (idx !== lastIdx) { lastIdx = idx;
+    skyMat.uniforms.top.value.set(L.top); skyMat.uniforms.hor.value.set(L.hor); skyMat.uniforms.sunc.value.set(L.sun); skyMat.uniforms.sdir.value.set(...L.sunDir).normalize(); skyMat.uniforms.stars.value = L.stars;
+    scene.fog.color.set(L.hor); hemi.color.set(L.top).lerp(new THREE.Color(0xffffff), .55); hemi.intensity = L.amb * 1.3; sun.color.set(L.sun); sun.position.set(...L.sunDir).multiplyScalar(100);
+    renderer.toneMappingExposure = L.exp; kGlow.material.opacity = L.glow * .8; moon.visible = !!L.stars && L.stars > .4; moon.position.set(-120, 160, -400);
+    birds.visible = stones.visible = id === 'birds'; puffs.forEach(p => p.visible = id === 'birds'); camels.visible = ['camels', 'yemen'].includes(id);
+  }
+  // actors
+  let eleZ = 30, walking = false, kneel = 0, armyOn = true, outT = null;
+  if (id === 'intro') { eleZ = 34; }
+  else if (id === 'yemen') { eleZ = 120; armyOn = false; }
+  else if (id === 'march') { eleZ = 110 - p * 26; walking = true; }
+  else if (id === 'camels') { eleZ = 140; armyOn = false; }
+  else if (id === 'quote') { eleZ = 80; armyOn = false; ele.visible = false; }
+  else if (id === 'kneel') { eleZ = 24; kneel = easeIO((lt - (item.voStart - item.start) - item.voDur * .55) / 1.3); }
+  else if (id === 'birds') { eleZ = 24; kneel = 1; outT = lt; }
+  else { armyOn = false; }
+  ele.visible = !['quote', 'sura', 'outro', 'yemen'].includes(id);
+  const ex = pathX(eleZ); ele.position.set(ex, height(ex, eleZ) - .2 - kneel * .9, eleZ); ele.rotation.set(-kneel * .22, Math.atan(6 * .025 * Math.cos(eleZ * .025)) * 0, 0);
+  legs.forEach((l, k) => { const front = k < 2; const sw = walking ? Math.sin(t * 4.2 + (k === 0 || k === 3 ? 0 : Math.PI)) * .35 : 0; l.rotation.x = sw + (front ? kneel * 1.25 : -kneel * .35); });
+  setArmyVisible(armyOn); if (armyOn) placeArmy(eleZ, t, walking, outT);
+  if (id === 'birds') { placeBirds(lt); placeStones(lt); }
+  // camera
+  const whip = Math.pow(1 - clamp(lt / .5), 3); let cp, la;
+  switch (id) {
+    case 'intro': cp = [lerp(-8, 2, p), lerp(24, 9, easeIO(p)), lerp(95, 48, easeIO(p))]; la = [0, 2.5, 0]; break;
+    case 'yemen': cp = [Math.sin(p * .5) * 30, 40, 120 - p * 10]; la = [0, 5, 20]; break;
+    case 'march': { const ez = eleZ; cp = [pathX(ez) - 15 + p * 4, 4.5, ez - 14 + p * 3]; la = [pathX(ez) + 1, 3.0, ez + 6]; break; }
+    case 'camels': { const a = .5 + p * .7; cp = [Math.cos(a) * 42, 2.6 + p * 1.2, 48 + Math.sin(a) * 42]; la = [0, 3.2, 48]; break; }
+    case 'quote': cp = [lerp(4, 1.5, easeIO(p)), lerp(2.4, 3.2, p), lerp(30, 13, easeIO(p))]; la = [0, 2.2, 0]; break;
+    case 'kneel': cp = [ex + 9 - p * 2, 4.2, eleZ + 15 - p * 3]; la = [ex - 1, 2.2, eleZ - 8]; break;
+    case 'birds': cp = [pathX(110) + 3, 8 + p * 4, 118]; la = [pathX(40), lerp(14, 6, easeIO(lt / 4)), 30]; break;
+    case 'sura': cp = [Math.sin(p * .6) * 18, lerp(4, 18, easeIO(p)), 28 - p * 4]; la = [0, 2, 0]; break;
+    default: cp = [-30 + p * 6, 30, 90]; la = [0, 4, 0];
+  }
+  camera.position.set(cp[0] - whip * 4, cp[1] + whip * 3, cp[2] + whip * 8); camera.lookAt(...la);
+  camera.fov = 50 + whip * 12; camera.updateProjectionMatrix(); camera.setViewOffset(W, H, 0, -H * .08, W, H);
+  renderer.render(scene, camera);
+
+  ctx.save(); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); const zf = 1 + .04 * whip; ctx.translate(540, 960); ctx.scale(zf, zf); ctx.translate(-540, -960); ctx.drawImage(glCanvas, 0, 0); ctx.restore();
+  vignette();
+  if (id === 'yemen') { ctx.fillStyle = `rgba(0,0,0,${.45 * ease(lt / .5)})`; ctx.fillRect(0, 0, W, H); }
+  if (id === 'intro') drawIntro(lt, d); else if (id === 'outro') drawOutro(lt);
+  else { drawChapter(item, lt, d);
+    if (id === 'yemen') drawMap(lt, d); if (id === 'camels') drawCamels(item, lt); if (id === 'quote') drawQuote(item, lt); if (id === 'sura') drawSura(item, lt);
+    if (id === 'kneel' || id === 'birds') tag('Rivayete göre', 80, 340, ease((lt - .5) / .4) * clamp((d - lt) / .3)); }
+  drawSubs(t);
+  ctx.save(); ctx.globalCompositeOperation = 'overlay'; ctx.translate(-((t * 997) % 256), -((t * 613) % 256)); ctx.fillStyle = ctx.createPattern(grain, 'repeat'); ctx.fillRect(0, 0, W + 256, H + 256); ctx.restore();
+  const fl = Math.max(0, 1 - lt / .25) * (idx > 0 ? 1 : 0); if (fl > 0) { ctx.fillStyle = `rgba(255,240,220,${fl * .55})`; ctx.fillRect(0, 0, W, H); }
+  const fade = Math.min(clamp(t / .5), clamp((TOTAL - t) / .7)); if (fade < 1) { ctx.fillStyle = `rgba(0,0,0,${1 - fade})`; ctx.fillRect(0, 0, W, H); }
+  return out.toDataURL('image/jpeg', .92);
+};
+for (const w of [600, 700, 800, 900]) await document.fonts.load(`${w} 64px Montserrat`, 'AĞŞİÜÖÇÂ');
+window.TOTAL = TOTAL; window.READY = true;
+</script></body></html>

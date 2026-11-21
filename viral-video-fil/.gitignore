@@ -1,0 +1,15 @@
+build/node_modules/
+build/package-lock.json
+build/video_noaudio.mp4
+build/mix_raw.wav
+build/stem_*.wav
+build/still_*.jpg
+build/sheet*.jpg
+build/wave.png
+build/spec.png
+build/audio_check.png
+build/render.log
+build/vo/*_raw.mp3
+build/node_modules
+build/still_*.jpg
+build/video_noaudio.mp4
